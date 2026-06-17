@@ -29,3 +29,6 @@ venv/
 
 # Python cache
 __pycache__/
+
+# local testing notes
+TESTING.md

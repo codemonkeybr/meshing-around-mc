@@ -1,9 +1,7 @@
 # helper functions and init for system related tasks
 # K7MHI Kelly Keeton 2024
 
-import meshtastic.serial_interface #pip install meshtastic or use launch.sh for venv
-import meshtastic.tcp_interface
-import meshtastic.ble_interface
+from meshcore import MeshCore, EventType
 import time
 import asyncio
 import random
@@ -61,9 +59,9 @@ if emergency_responder_enabled:
     
 # whoami Configuration
 if whoami_enabled:
-    trap_list_whoami = ("whoami", "📍", "whois")
+    trap_list_whoami = ("whoami", "📍", "whois", "path")
     trap_list = trap_list + trap_list_whoami
-    help_message = help_message + ", whoami"
+    help_message = help_message + ", whoami, path"
 
 # Solar Conditions Configuration
 if solar_conditions_enabled:
@@ -331,116 +329,126 @@ if ble_count > 1:
     logger.critical(f"System: Multiple BLE interfaces detected. Only one BLE interface is allowed. Exiting")
     exit()
 
-# Initialize interfaces
-logger.debug(f"System: Initializing Interfaces")
+# Interface globals — actual connections created in async init_interfaces()
+logger.debug("System: Declaring interface globals (MeshCore async init deferred)")
+_bot_start_time = time.time()
 interface1 = interface2 = interface3 = interface4 = interface5 = interface6 = interface7 = interface8 = interface9 = None
 retry_int1 = retry_int2 = retry_int3 = retry_int4 = retry_int5 = retry_int6 = retry_int7 = retry_int8 = retry_int9 = False
-myNodeNum1 = myNodeNum2 = myNodeNum3 = myNodeNum4 = myNodeNum5 = myNodeNum6 = myNodeNum7 = myNodeNum8 = myNodeNum9 = 777
+myNodeNum1 = myNodeNum2 = myNodeNum3 = myNodeNum4 = myNodeNum5 = myNodeNum6 = myNodeNum7 = myNodeNum8 = myNodeNum9 = "000000000000"
 max_retry_count1 = max_retry_count2 = max_retry_count3 = max_retry_count4 = max_retry_count5 = max_retry_count6 = max_retry_count7 = max_retry_count8 = max_retry_count9 = interface_retry_count
-for i in range(1, 10):
-    interface_type = globals().get(f'interface{i}_type')
-    if not interface_type or interface_type == 'none' or globals().get(f'interface{i}_enabled') == False:
-        # no valid interface found
-        continue
-    try:
-        if globals().get(f'interface{i}_enabled'):
-            if interface_type == 'serial':
-                globals()[f'interface{i}'] = meshtastic.serial_interface.SerialInterface(globals().get(f'port{i}'))
-            elif interface_type == 'tcp':
-                host = globals().get(f'hostname{i}', '127.0.0.1')
-                port = 4403
+my_node_ids = []
 
-                # Allow host:port format
-                if isinstance(host, str) and ':' in host:
-                    maybe_host, maybe_port = host.rsplit(':', 1)
-                    if maybe_port.isdigit():
-                        host = maybe_host
-                        try:
-                            port = int(maybe_port)
-                        except ValueError:
-                            port = 4403
+# Contact cache: pubkey_prefix (12-char hex) -> {name_long, name_short, pubkey, snr, last_seen}
+_contacts = {}
 
-                globals()[f'interface{i}'] = meshtastic.tcp_interface.TCPInterface(hostname=host, portNumber=port)
-            elif interface_type == 'ble':
-                globals()[f'interface{i}'] = meshtastic.ble_interface.BLEInterface(globals().get(f'mac{i}'))
-            else:
-                logger.critical(f"System: Interface Type: {interface_type} not supported. Validate your config against config.template Exiting")
-                exit()
-    except Exception as e:
-        logger.critical(f"System: abort. Initializing Interface{i} {e}")
+# Bot's own crypto identity (populated at startup from mc.commands.export_private_key)
+_bot_private_key: bytes | None = None
+_bot_public_key:  bytes | None = None
+
+def get_bot_keys():
+    """Return (private_key_bytes, public_key_bytes) or (None, None) if not yet loaded."""
+    return _bot_private_key, _bot_public_key
+
+def get_interface(nodeInt=1):
+    """Return the live MeshCore interface object for the given slot."""
+    return globals().get(f'interface{nodeInt}')
+
+def update_contact(pubkey_prefix, name_long="", name_short="", pubkey="", snr=0, lat=None, lon=None):
+    """Upsert a contact in the in-memory cache."""
+    existing = _contacts.get(pubkey_prefix, {})
+    _contacts[pubkey_prefix] = {
+        'name_long': name_long or existing.get('name_long') or pubkey_prefix,
+        'name_short': name_short or existing.get('name_short') or pubkey_prefix[:8],
+        'pubkey': pubkey or existing.get('pubkey', ''),
+        'snr': snr,
+        'last_seen': time.time(),
+        'lat': lat if lat is not None else existing.get('lat'),
+        'lon': lon if lon is not None else existing.get('lon'),
+    }
+
+async def _connect_interface(i):
+    """Connect a single interface slot and return the MeshCore object."""
+    interface_type = globals().get(f'interface{i}_type', '').lower()
+    if interface_type == 'serial':
+        port = globals().get(f'port{i}')
+        if not port:
+            logger.critical(f"System: Interface{i} serial type requires a port in config.ini")
+            return None
+        return await MeshCore.create_serial(port)
+    elif interface_type == 'tcp':
+        host = globals().get(f'hostname{i}', '127.0.0.1')
+        port = 5000
+        if isinstance(host, str) and ':' in host:
+            maybe_host, maybe_port = host.rsplit(':', 1)
+            if maybe_port.isdigit():
+                host = maybe_host
+                port = int(maybe_port)
+        return await MeshCore.create_tcp(host=host, port=port)
+    elif interface_type == 'ble':
+        return await MeshCore.create_ble(address=globals().get(f'mac{i}'))
+    else:
+        logger.critical(f"System: Interface type '{interface_type}' not supported. Exiting")
         exit()
 
-# Get my node numbers for global use       
-my_node_ids = [globals().get(f'myNodeNum{i}') for i in range(1, 10)]
-
-# Get the node number of the devices, check if the devices are connected meshtastic devices
-for i in range(1, 10):
-    if globals().get(f'interface{i}') and globals().get(f'interface{i}_enabled'):
-        try:
-            globals()[f'myNodeNum{i}'] = globals()[f'interface{i}'].getMyNodeInfo()['num']
-            logger.debug(f"System: Initalized Radio Device{i} Node Number: {globals()[f'myNodeNum{i}']}")
-        except Exception as e:
-            logger.critical(f"System: critical error initializing interface{i} {e}")
-    else:
-        globals()[f'myNodeNum{i}'] = 777
-
-# Fetch channel list from each device
-_channel_cache = None
-
-def build_channel_cache(force_refresh: bool = False):
-    """
-    Build and cache channel_list from interfaces once (or when forced).
-    """
-    global _channel_cache
-    if _channel_cache is not None and not force_refresh:
-        return _channel_cache
-
-    cache = []
+async def init_interfaces():
+    """Connect to all configured radio interfaces via MeshCore (call once from main())."""
+    global my_node_ids
     for i in range(1, 10):
-        if not globals().get(f'interface{i}') or not globals().get(f'interface{i}_enabled'):
+        interface_type = globals().get(f'interface{i}_type', '')
+        if not interface_type or interface_type == 'none' or not globals().get(f'interface{i}_enabled'):
             continue
         try:
-            node = globals()[f'interface{i}'].getNode('^local')
-            # Try to use the node-provided channel/hash table if available
+            mc = await _connect_interface(i)
+            if mc is None:
+                logger.critical(f"System: Interface{i} returned None — no response from radio on {globals().get(f'port{i}', '?')}. Check connection and baud rate.")
+                exit()
+            globals()[f'interface{i}'] = mc
+            logger.info(f"System: Interface{i} connected via {interface_type}")
+            await mc.start_auto_message_fetching()
+            logger.debug(f"System: Interface{i} auto message fetching started")
+            # Populate bot's own pubkey prefix from radio self_info
+            self_info = mc.self_info or {}
+            own_pubkey = self_info.get('public_key', '')
+            own_name = self_info.get('name', '')
+            if own_pubkey:
+                own_prefix = own_pubkey[:12]
+                globals()[f'myNodeNum{i}'] = own_prefix
+                logger.info(f"System: Interface{i} self: {own_name} ({own_prefix})")
+            # Export private key for DM decryption from raw packets
             try:
-                ch_hash_table_raw = node.get_channels_with_hash()
-                #print(f"System: Device{i} Channel Hash Table: {ch_hash_table_raw}")
+                global _bot_private_key, _bot_public_key
+                from meshcore import EventType as _ET
+                key_result = await mc.commands.export_private_key()
+                if key_result and hasattr(key_result, 'payload') and isinstance(key_result.payload, dict):
+                    pk = key_result.payload.get('private_key')
+                    if pk:
+                        _bot_private_key = pk
+                        import nacl.bindings as _nacl
+                        _bot_public_key = _nacl.crypto_scalarmult_ed25519_base_noclamp(pk[:32])
+                        logger.info(f"System: Interface{i} private key loaded, pub:{_bot_public_key.hex()[:12]}")
+                    else:
+                        logger.warning(f"System: Interface{i} private key export returned no key")
+                else:
+                    logger.warning(f"System: Interface{i} private key export not available (enable ENABLE_PRIVATE_KEY_EXPORT=1 in firmware)")
+            except Exception as e:
+                logger.warning(f"System: Interface{i} private key export failed: {e}")
+            try:
+                await mc.commands.get_contacts()
             except Exception:
-                logger.warning(f"System: API version error update API `pip3 install --upgrade meshtastic[cli]`")
-                ch_hash_table_raw = []
-
-            channel_dict = {}
-            # Use the hash table as the source of truth for channels
-            if isinstance(ch_hash_table_raw, list):
-                for entry in ch_hash_table_raw:
-                    channel_name = entry.get("name", "").strip()
-                    channel_number = entry.get("index")
-                    ch_hash = entry.get("hash")
-                    role = entry.get("role", "")
-                    # Always add PRIMARY/SECONDARY channels, even if name is empty
-                    if role in ("PRIMARY", "SECONDARY"):
-                        channel_dict[channel_name if channel_name else f"Channel{channel_number}"] = {
-                            "number": channel_number,
-                            "hash": ch_hash
-                        }
-            elif isinstance(ch_hash_table_raw, dict):
-                for channel_name, ch_hash in ch_hash_table_raw.items():
-                    channel_dict[channel_name] = {"number": None, "hash": ch_hash}
-            # Always add the interface, even if no named channels
-            cache.append({"interface_id": i, "channels": channel_dict})
-            logger.debug(f"System: Fetched Channel List from Device{i} (cached)")
+                pass
         except Exception as e:
-            logger.debug(f"System: Error fetching channel list from Device{i}: {e}")
+            logger.critical(f"System: Error connecting Interface{i}: {e}")
+            exit()
+    my_node_ids = [globals().get(f'myNodeNum{i}') for i in range(1, 10)]
 
-    _channel_cache = cache
-    return _channel_cache
+def build_channel_cache(force_refresh: bool = False):
+    """Stub: MeshCore channel resolution not yet implemented."""
+    return []
 
 def refresh_channel_cache():
-    """Force rebuild of channel cache (call only when channel config changes)."""
     return build_channel_cache(force_refresh=True)
 
 channel_list = build_channel_cache()
-#print(f"System: Channel Cache Built: {channel_list}")
 
 #### FUN-ctions ####
 def resolve_channel_name(channel_number, rxNode=1, interface_obj=None):
@@ -539,224 +547,78 @@ def cleanup_game_trackers(current_time):
         logger.error(f"System: Error cleaning up game trackers: {e}")
 
 def decimal_to_hex(decimal_number):
-    return f"!{decimal_number:08x}"
+    try:
+        return f"!{int(decimal_number):08x}"
+    except (TypeError, ValueError):
+        return str(decimal_number)
 
 def get_name_from_number(number, type='long', nodeInt=1):
-    interface = globals()[f'interface{nodeInt}']
-    name = ""
-    
-    for node in interface.nodes.values():
-        if number == node['num']:
-            if type == 'long':
-                name = node['user']['longName']
-                return name
-            elif type == 'short':
-                name = node['user']['shortName']
-                return name
-        else:
-            name =  str(decimal_to_hex(number))  # If name not found, use the ID as string
-    return name
+    """Look up display name for a pubkey_prefix from the contact cache."""
+    key = str(number)
+    contact = _contacts.get(key)
+    if contact:
+        return contact['name_long'] if type == 'long' else contact['name_short']
+    return key  # show the pubkey prefix if no name known
 
 def get_num_from_short_name(short_name, nodeInt=1):
-    # First, search the specified interface
-    interface = globals()[f'interface{nodeInt}']
-    logger.debug(f"System: Checking Node Number from Short Name: {short_name} on Device: {nodeInt}")
-    for node in interface.nodes.values():
-        if short_name == node['user']['shortName'] or str(short_name).lower() == node['user']['shortName'].lower():
-            return node['num']
+    """Return the pubkey_prefix matching a short name, or the input unchanged."""
+    short_lower = str(short_name).lower()
+    for prefix, info in _contacts.items():
+        if info.get('name_short', '').lower() == short_lower:
+            return prefix
+    return str(short_name)
 
-    # If not found, search all other enabled interfaces
-    for iface_num in range(1, 10):
-        if iface_num == nodeInt:
-            continue
-        if globals().get(f'interface{iface_num}_enabled'):
-            other_interface = globals().get(f'interface{iface_num}')
-            for node in other_interface.nodes.values():
-                if short_name == node['user']['shortName'] or str(short_name).lower() == node['user']['shortName'].lower():
-                    logger.debug(f"System: Found Device:{iface_num} Node:{node['user']['shortName']}")
-                    return node['num']
-
-    # !hex node IDs
-    if str(short_name).startswith("!"):
-        try:
-            return int(short_name[1:], 16)
-        except Exception:
-            pass
-
-    return 0
+def find_contacts_by_name(query):
+    """Search contacts by name_long (case-insensitive substring) or pubkey prefix (hex prefix match).
+    Returns list of (prefix, name_long) tuples — 0, 1, or many."""
+    q = str(query).lower().strip()
+    if not q:
+        return []
+    is_hex = all(c in '0123456789abcdef' for c in q)
+    results = []
+    for prefix, info in _contacts.items():
+        if is_hex and prefix.startswith(q):
+            results.append((prefix, info.get('name_long', prefix)))
+        elif not is_hex and q in info.get('name_long', prefix).lower():
+            results.append((prefix, info.get('name_long', prefix)))
+    return results
     
 def get_node_list(nodeInt=1):
-    interface = globals()[f'interface{nodeInt}']
-    # Get a list of nodes on the device
-    node_list = ""
-    node_list1 = []
-    node_list2 = []
-    short_node_list = []
-    last_heard = 0
-    if interface.nodes:
-        for node in interface.nodes.values():
-            # ignore own
-            if all(node['num'] != globals().get(f'myNodeNum{i}') for i in range(1, 10)):
-                node_name = get_name_from_number(node['num'], 'short', nodeInt)
-                snr = node.get('snr', 0)
-
-                # issue where lastHeard is not always present
-                last_heard = node.get('lastHeard', 0)
-                
-                # make a list of nodes with last heard time and SNR
-                item = (node_name, last_heard, snr)
-                node_list1.append(item)
-    else:
-        logger.warning(f"System: No nodes found")
+    """Return a formatted string of recently-heard contacts from the cache."""
+    if not _contacts:
+        logger.warning("System: No contacts in cache yet")
         return ERROR_FETCHING_DATA
-    
-    try:
-        #print (f"Node List: {node_list1[:5]}\n")
-        node_list1.sort(key=lambda x: x[1] if x[1] is not None else 0, reverse=True)
-        #print (f"Node List: {node_list1[:5]}\n")
-        if multiple_interface:
-            logger.debug(f"System: FIX ME line 327 Multiple Interface Node List")
-            node_list2.sort(key=lambda x: x[1] if x[1] is not None else 0, reverse=True)
-    except Exception as e:
-        logger.error(f"System: Error sorting node list: {e}")
-        logger.debug(f"Node List1: {node_list1[:5]}\n")
-        if multiple_interface:
-            logger.debug(f"FIX ME MULTI INTERFACE Node List2: {node_list2[:5]}\n")
-        node_list = ERROR_FETCHING_DATA
-
-    try:
-        # make a nice list for the user
-        for x in node_list1[:SITREP_NODE_COUNT]:
-            short_node_list.append(f"{x[0]} SNR:{x[2]}")
-        for x in node_list2[:SITREP_NODE_COUNT]:
-            short_node_list.append(f"{x[0]} SNR:{x[2]}")
-
-        for x in short_node_list:
-            if x != "" or x != '\n':
-                node_list += x + "\n"
-    except Exception as e:
-        logger.error(f"System: Error creating node list: {e}")
-        node_list = ERROR_FETCHING_DATA
-    
+    sorted_contacts = sorted(_contacts.items(), key=lambda x: x[1].get('last_seen', 0), reverse=True)
+    node_list = ""
+    for prefix, info in sorted_contacts[:SITREP_NODE_COUNT]:
+        snr = info.get('snr', 0)
+        node_list += f"{info.get('name_short', prefix)} SNR:{snr}\n"
     return node_list
 
 def get_node_location(nodeID, nodeInt=1, channel=0, round_digits=2):
-    """
-    Returns [latitude, longitude] for a node.
-    - Always returns a fuzzed (rounded) config location as fallback.
-    - returns their actual position if available, else fuzzed config location.
-    """
-    interface = globals()[f'interface{nodeInt}']
-
-    fuzzed_position = [round(latitudeValue, round_digits), round(longitudeValue, round_digits)]
-    config_position = [latitudeValue, longitudeValue]
-
-    # Try to find an exact location for the requested node
-    if interface.nodes:
-        for node in interface.nodes.values():
-            if nodeID == node['num']:
-                pos = node.get('position')
-                if (
-                    pos and isinstance(pos, dict)
-                    and pos.get('latitude') is not None
-                    and pos.get('longitude') is not None
-                ):
-                    try:
-                        # Got a valid position
-                        latitude = pos['latitude']
-                        longitude = pos['longitude']
-                        if fuzzItAll:
-                            latitude = round(latitude, round_digits)
-                            longitude = round(longitude, round_digits)
-                            logger.debug(f"System: Fuzzed location data for {nodeID} is {latitude}, {longitude}")
-                        logger.debug(f"System: Location data for {nodeID} is {latitude}, {longitude}")
-                        return [latitude, longitude]
-                    except Exception as e:
-                        logger.warning(f"System: Error processing position for node {nodeID}: {e}")
-
+    """Return [lat, lon] for a contact by pubkey prefix, or bot's config location if unknown."""
+    contact = _contacts.get(str(nodeID))
+    if contact:
+        lat = contact.get('lat')
+        lon = contact.get('lon')
+        if lat is not None and lon is not None and (lat != 0.0 or lon != 0.0):
+            return [round(lat, round_digits), round(lon, round_digits)]
     if fuzz_config_location:
-        # Return fuzzed config location if no valid position found
-        return fuzzed_position
-    else:
-        return config_position
-    
-async def get_closest_nodes(nodeInt=1,returnCount=3, channel=publicChannel):
-        interface = globals()[f'interface{nodeInt}']
-        node_list = []
+        return [round(latitudeValue, round_digits), round(longitudeValue, round_digits)]
+    return [latitudeValue, longitudeValue]
 
-        if interface.nodes:
-            for node in interface.nodes.values():
-                if 'position' in node:
-                    try:
-                        nodeID = node['num']
-                        latitude = node['position']['latitude']
-                        longitude = node['position']['longitude']
+async def get_closest_nodes(nodeInt=1, returnCount=3, channel=publicChannel):
+    """Stub: per-node location not available via MeshCore contact cache yet."""
+    logger.warning("System: get_closest_nodes not implemented for MeshCore yet")
+    return ERROR_FETCHING_DATA
 
-                        #lastheard time in unix time
-                        lastheard = node.get('lastHeard', 0)
-                        #if last heard is over 24 hours ago, ignore the node
-                        if lastheard < (time.time() - 86400):
-                            continue
-
-                        # Calculate distance to node from config.ini location
-                        distance = round(geopy.distance.geodesic((latitudeValue, longitudeValue), (latitude, longitude)).m, 2)
-                        
-                        if (distance < sentry_radius):
-                            if (nodeID not in my_node_ids) and str(nodeID) not in sentryIgnoreList:
-                                node_list.append({'id': nodeID, 'latitude': latitude, 'longitude': longitude, 'distance': distance})
-                                
-                    except Exception as e:
-                        pass
-                else:
-                    # request location data currently blocking needs to be async
-                    reqLocationEnabled = False
-                    if reqLocationEnabled:
-                        try:
-                            logger.debug(f"System: Requesting location data for {node['id']}, lastHeard: {node.get('lastHeard', 'N/A')}")
-                            # if not a interface node
-                            if node['num'] in my_node_ids:
-                                ignore = True
-                            else:
-                                # one idea is to send a ping to the node to request location data for if or when, ask again later
-                                interface.sendPosition(destinationId=node['id'], wantResponse=False, channelIndex=channel)
-                                # wayyy too fast async wait
-                                
-                                # send a traceroute request
-                                interface.sendTraceRoute(destinationId=node['id'], channelIndex=channel, wantResponse=False)
-                        except Exception as e:
-                            logger.error(f"System: Error requesting location data for {node['id']}. Error: {e}")
-            # sort by distance closest
-            #node_list.sort(key=lambda x: (x['latitude']-latitudeValue)**2 + (x['longitude']-longitudeValue)**2)
-            node_list.sort(key=lambda x: x['distance'])
-            # return the first 3 closest nodes by default
-            return node_list[:returnCount]
-        else:
-            logger.warning(f"System: No nodes found in closest_nodes on interface {nodeInt}")
-            return ERROR_FETCHING_DATA
-    
 def handleFavoriteNode(nodeInt=1, nodeID=0, aor=False):
-    # Add or remove a favorite node for the given interface. aor: True to add, False to remove.
-    interface = globals()[f'interface{nodeInt}']
-    myNodeNumber = globals().get(f'myNodeNum{nodeInt}')
-    try:
-        if aor:
-            result = interface.getNode(myNodeNumber).setFavorite(nodeID)
-            logger.info(f"System: Added {nodeID} to favorites for device {nodeInt}")
-        else:
-            result = interface.getNode(myNodeNumber).removeFavorite(nodeID)
-            logger.info(f"System: Removed {nodeID} from favorites for device {nodeInt}")
-        return result
-    except Exception as e:
-        logger.error(f"System: Error handling favorite node {nodeID} on device {nodeInt}: {e}")
-        return None
-    
+    logger.warning("System: handleFavoriteNode not implemented for MeshCore yet")
+    return None
+
 def getFavoritNodes(nodeInt=1):
-    interface = globals()[f'interface{nodeInt}']
-    myNodeNumber = globals().get(f'myNodeNum{nodeInt}')
-    favList = []
-    for node in interface.getNode(myNodeNumber).favorites:
-        favList.append(node)
-    return favList
+    logger.warning("System: getFavoritNodes not implemented for MeshCore yet")
+    return []
 
 def handleSentinelIgnore(nodeInt=1, nodeID=0, aor=False):
     #aor is add or remove if True add, if False remove
@@ -852,130 +714,80 @@ def messageChunker(message):
     except Exception as e:
         logger.warning(f"System: Exception during message chunking: {e} (message length: {len(message)})")
         
-def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_id=None):
-    # Send a message to a channel or DM
-    interface = globals()[f'interface{nodeInt}']
-    # Check if the message is empty
-    if message == "" or message is None or len(message) == 0:
+# --- DM send mode ---
+# "simple"  : send_msg (fire-and-forget, no ACK wait) — fast, no retry
+# "reliable": send_msg_with_retry (waits for ACK, retries via known path, falls back to flood)
+DM_SEND_MODE = "reliable"
+
+async def _send_dm(interface, dst: str, text: str) -> bool:
+    """Send a single DM chunk via the configured send mode."""
+    # Prefer full pubkey from contact cache so send_msg_with_retry can reset path
+    contact = _contacts.get(dst, {})
+    full_key = contact.get('pubkey') or dst  # 64-char hex if available, else 12-char prefix
+
+    if DM_SEND_MODE == "reliable":
+        result = await interface.commands.send_msg_with_retry(full_key, text)
+        if result is None:
+            # No ACK — likely ERR_CODE_TABLE_FULL; wait for queue to drain then try simple send
+            logger.warning(f"System: send_msg_with_retry got no ACK for {dst[:12]}, retrying after delay")
+            await asyncio.sleep(3)
+            result = await interface.commands.send_msg(full_key, text)
+            if result is None or result.is_error():
+                logger.error(f"System: Fallback send_msg also failed for {dst[:12]}")
+                return False
+            logger.debug(f"System: Fallback send_msg succeeded for {dst[:12]}")
+        elif result.is_error():
+            logger.error(f"System: send_msg_with_retry failed: {result.payload}")
+            return False
+    else:
+        result = await interface.commands.send_msg(dst, text)
+        if result is None or result.is_error():
+            logger.error(f"System: send_msg failed for {dst[:12]}")
+            return False
+    return True
+
+
+async def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, reply_id=None):
+    """Send a DM or channel message via MeshCore."""
+    interface = globals().get(f'interface{nodeInt}')
+    if not interface:
+        logger.warning(f"System: Interface{nodeInt} not connected, cannot send message")
+        return False
+    if not message:
         return False
 
     try:
-        def _send_with_reply(**kwargs):
-            # For threaded replies, send as DATA payload to match Meshtastic inline-reply behavior. no API call today.
-            if reply_id is not None:
-                text_payload = kwargs.pop('text', '')
-                if isinstance(text_payload, str):
-                    raw_payload = text_payload.encode('utf-8')
-                else:
-                    raw_payload = text_payload
-
-                data_kwargs = {
-                    # 1 == TEXT_MESSAGE_APP, required so clients render payload as chat text.
-                    'portNum': 1,
-                    'channelIndex': kwargs.get('channelIndex', ch),
-                    'wantAck': kwargs.get('wantAck', wantAck),
-                }
-                if kwargs.get('destinationId'):
-                    data_kwargs['destinationId'] = kwargs.get('destinationId')
-                # send the data payload with the replyId for threading
-                return interface.sendData(raw_payload, replyId=reply_id, **data_kwargs)
-            # Otherwise, send as normal text message
-            return interface.sendText(**kwargs)
-
-        # Force chunking and log if message exceeds maxBuffer
-        if len(message.encode('utf-8')) > maxBuffer:
-            logger.debug(f"System: Message length {len(message.encode('utf-8'))} exceeds maxBuffer{maxBuffer}, forcing chunking.")
-            message_list = messageChunker(message)
-        elif not bypassChuncking:
-            # Split the message into chunks if it exceeds the MESSAGE_CHUNK_SIZE
+        if len(message.encode('utf-8')) > maxBuffer or not bypassChuncking:
             message_list = messageChunker(message)
         else:
             message_list = [message]
 
-        if isinstance(message_list, list):
-            # Send the message to the channel or DM
-            total_length = sum(len(chunk) for chunk in message_list)
-            num_chunks = len(message_list)
-            for m in message_list:
-                chunkOf = f"{message_list.index(m)+1}/{num_chunks}"
-                if nodeid == 0:
-                    # Send to channel
-                    if wantAck:
-                        logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
-                        _send_with_reply(text=m, channelIndex=ch, wantAck=True)
-                    else:
-                        logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
-                        _send_with_reply(text=m, channelIndex=ch)
-                else:
-                    # Send to DM
-                    if wantAck:
-                        logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"req.ACK " + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
-                                 " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid, wantAck=True)
-                    else:
-                        logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +\
-                                    " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                        _send_with_reply(text=m, channelIndex=ch, destinationId=nodeid)
+        if not isinstance(message_list, list):
+            message_list = [message]
 
-                # Throttle the message sending to prevent spamming the device
-                if (message_list.index(m)+1) % 4 == 0:
-                    time.sleep(responseDelay + 1)
-                    if (message_list.index(m)+1) % 5 == 0:
-                        logger.warning(f"System: throttling rate Interface{nodeInt} on {chunkOf}")
-
-                # wait an amount of time between sending each split message
-                time.sleep(splitDelay)
-        else: # message is less than MESSAGE_CHUNK_SIZE characters
-            if nodeid == 0:
-                # Send to channel
-                if wantAck:
-                    logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + "req.ACK " + "SendingChannel: " + CustomFormatter.white + message.replace('\n', ' '))
-                    _send_with_reply(text=message, channelIndex=ch, wantAck=True)
-                else:
-                    logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + "SendingChannel: " + CustomFormatter.white + message.replace('\n', ' '))
-                    _send_with_reply(text=message, channelIndex=ch)
+        num_chunks = len(message_list)
+        for idx, m in enumerate(message_list):
+            chunkOf = f"{idx+1}/{num_chunks}"
+            if nodeid == 0 or nodeid == "0":
+                logger.info(f"Device:{nodeInt} Channel:{ch} " + CustomFormatter.red + f"Chunker{chunkOf} SendingChannel: " + CustomFormatter.white + m.replace('\n', ' '))
+                result = await interface.commands.send_chan_msg(ch, m)
+                if result.is_error():
+                    logger.error(f"System: send_chan_msg failed: {result.payload}")
             else:
-                # Send to DM
-                if wantAck:
-                    logger.info(f"Device:{nodeInt} " + CustomFormatter.red + "req.ACK " + "Sending DM: " + CustomFormatter.white + message.replace('\n', ' ') + CustomFormatter.purple +\
-                                 " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                    _send_with_reply(text=message, channelIndex=ch, destinationId=nodeid, wantAck=True)
-                else:
-                    logger.info(f"Device:{nodeInt} " + CustomFormatter.red + "Sending DM: " + CustomFormatter.white + message.replace('\n', ' ') + CustomFormatter.purple +\
-                                " To: " + CustomFormatter.white + f"{get_name_from_number(nodeid, 'long', nodeInt)}")
-                    _send_with_reply(text=message, channelIndex=ch, destinationId=nodeid)
-            # Throttle the message sending to prevent spamming the device
-            time.sleep(responseDelay)
+                dst = str(nodeid)
+                logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +
+                            " To: " + CustomFormatter.white + f"{get_name_from_number(dst, 'long', nodeInt)} [{DM_SEND_MODE}]")
+                await _send_dm(interface, dst, m)
+            await asyncio.sleep(splitDelay)
         return True
     except Exception as e:
         logger.error(f"System: Exception during send_message: {e} (message length: {len(message)})")
         return False
 
-def send_raw_bytes(nodeid, raw_bytes, nodeInt=1, channel=0, portnum=256, want_ack=True, reply_id=None):
-    # Send raw bytes to a node using the Meshtastic interface.
-    interface = globals()[f'interface{nodeInt}']
-    try:
-        send_kwargs = {
-            'destinationId': nodeid,
-            'portNum': portnum,
-            'channelIndex': channel,
-            'wantAck': want_ack,
-        }
-        if reply_id is not None:
-            try:
-                interface.sendData(raw_bytes, replyId=reply_id, **send_kwargs)
-            except TypeError:
-                logger.debug("System: replyId/replyID unsupported for sendData; sending without threaded reply")
-                interface.sendData(raw_bytes, **send_kwargs)
-        else:
-            interface.sendData(raw_bytes, **send_kwargs)
-        # Throttle the message sending to prevent spamming the device
-        logger.debug(f"System: Sent raw bytes to {nodeid} on portnum {portnum} via Device{nodeInt}")
-        time.sleep(responseDelay)
-        return True
-    except Exception as e:
-        logger.error(f"System: Error sending raw bytes to {nodeid} via Device{nodeInt}: {e} bytes: {raw_bytes}")
-        return False
+async def send_raw_bytes(nodeid, raw_bytes, nodeInt=1, channel=0, portnum=256, want_ack=True, reply_id=None):
+    """Stub: raw-byte sending not yet implemented for MeshCore."""
+    logger.warning(f"System: send_raw_bytes not implemented for MeshCore yet")
+    return False
 
 def decode_raw_bytes(raw_bytes):
     # Decode raw bytes received from a Meshtastic device.
@@ -1254,7 +1066,7 @@ def handle_bbsban(message, message_from_id, isDM):
 
     return msg
 
-def handleMultiPing(nodeID=0, deviceID=1):
+async def handleMultiPing(nodeID=0, deviceID=1):
     global multiPingList
     if len(multiPingList) > 1:
         mPlCpy = multiPingList.copy()
@@ -1293,7 +1105,7 @@ def handleMultiPing(nodeID=0, deviceID=1):
                         count -= 1
 
                 # send the DM
-                send_message(f"🔂{count} {type}", channel_number, message_id_from, deviceID, bypassChuncking=True)
+                await send_message(f"🔂{count} {type}", channel_number, message_id_from, deviceID, bypassChuncking=True)
                 if count < 2:
                     # remove the item from the list
                     for j in range(len(multiPingList)):
@@ -1320,7 +1132,7 @@ def should_send_alert(alert_type, new_message, min_interval=1):
         return True
     return False
 
-def handleAlertBroadcast(deviceID=1):
+async def handleAlertBroadcast(deviceID=1):
     try:
         alertUk = alertDe = alertFema = wxAlert = volcanoAlert = overdueAlerts = NO_ALERTS
         alertWx = False
@@ -1330,8 +1142,8 @@ def handleAlertBroadcast(deviceID=1):
         if checklist_enabled:
             overdueAlerts = format_overdue_alert()
             if overdueAlerts:
-                if should_send_alert("overdue", overdueAlerts, min_interval=300): # 5 minutes interval for overdue alerts
-                    send_message(overdueAlerts, emergency_responder_alert_channel, 0, emergency_responder_alert_interface)
+                if should_send_alert("overdue", overdueAlerts, min_interval=300):
+                    await send_message(overdueAlerts, emergency_responder_alert_channel, 0, emergency_responder_alert_interface)
 
         # Only allow API call every alert_duration minutes at xx:00, xx:20, xx:40
         if not (clock.minute % alert_duration == 0 and clock.second <= 17):
@@ -1363,14 +1175,14 @@ def handleAlertBroadcast(deviceID=1):
             if enabled and alert_msg and NO_ALERTS not in alert_msg and ERROR_FETCHING_DATA not in alert_msg:
                 if should_send_alert(alert_type, alert_msg):
                     logger.debug(f"System: Sending {alert_type} alert to emergency responder channel {emergency_responder_alert_channel}")
-                    send_message(alert_msg, emergency_responder_alert_channel, 0, emergency_responder_alert_interface)
+                    await send_message(alert_msg, emergency_responder_alert_channel, 0, emergency_responder_alert_interface)
                 if eAlertBroadcastChannel:
                     for ch in eAlertBroadcastChannel:
                         ch = ch.strip()
                         if ch:
                             logger.debug(f"System: Sending {alert_type} alert to aux channel {ch}")
-                            time.sleep(splitDelay)
-                            send_message(alert_msg, int(ch), 0, emergency_responder_alert_interface)
+                            await asyncio.sleep(splitDelay)
+                            await send_message(alert_msg, int(ch), 0, emergency_responder_alert_interface)
     except Exception as e:
         logger.error(f"System: Error in handleAlertBroadcast: {e}")
     return False
@@ -1393,125 +1205,37 @@ def initialize_telemetryData():
 initialize_telemetryData()
 
 def getNodeFirmware(nodeID=0, nodeInt=1):
-    interface = globals()[f'interface{nodeInt}']
-    # get the firmware version of the node
-    # this is a workaround because .localNode.getMetadata spits out a lot of debug info which cant be suppressed
-    # Create a StringIO object to capture the 
-    output_capture = io.StringIO()
-    with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
-        interface.localNode.getMetadata()
-    console_output = output_capture.getvalue()
-    if "firmware_version" in console_output:
-        fwVer = console_output.split("firmware_version: ")[1].split("\n")[0]
-        return fwVer
-    return -1
+    """MeshCore firmware version not directly queryable — return placeholder."""
+    return "MeshCore"
 
 def compileFavoriteList(getInterfaceIDs=True):
-    # build a list of favorite nodes to add to the device
+    """Build a list of known pubkey prefixes for configured interfaces."""
     fav_list = []
-
     if getInterfaceIDs:
-        logger.debug(f"System:compileFavoriteList Collecting Nodes for use on roof client_base only")
-        # get the node IDs for each interface
         for i in range(1, 10):
-            if globals().get(f'interface{i}') and globals().get(f'interface{i}_enabled'):
-                myNodeNum = globals().get(f'myNodeNum{i}', 0)
-                if myNodeNum != 0:
-                    object = {'nodeID': myNodeNum, 'deviceID': i}
-                    fav_list.append(object)
-                    logger.debug(f"System:compileFavoriteList Added NodeID {myNodeNum} favorite list")
-
-    if not getInterfaceIDs:
-        logger.debug(f"System:compileFavoriteList Compiling Favorite Node List for use on bot to save DM keys only")
-        if (bbs_admin_list != [0] or favoriteNodeList != ['']) or bbs_link_whitelist != [0]:
-            logger.debug(f"System: Collecting Favorite Nodes to add to device(s)")
-            # loop through each interface and add the favorite nodes
-            for i in range(1, 10):
-                if globals().get(f'interface{i}') and globals().get(f'interface{i}_enabled'):
-                    for fav in bbs_admin_list + favoriteNodeList + bbs_link_whitelist:
-                        if fav != 0 and fav != '' and fav is not None:
-                            object = {'nodeID': fav, 'deviceID': i}
-                            # check object not already in the list
-                            if object not in fav_list:
-                                fav_list.append(object)
-                                logger.debug(f"System:compileFavoriteList Favorite Node {fav}")
+            myNodeNum = globals().get(f'myNodeNum{i}', "000000000000")
+            if globals().get(f'interface{i}') and myNodeNum != "000000000000":
+                fav_list.append({'nodeID': myNodeNum, 'deviceID': i})
     return fav_list
 
 def displayNodeTelemetry(nodeID=0, rxNode=0, userRequested=False):
-    interface = globals()[f'interface{rxNode}']
-    myNodeNum = globals().get(f'myNodeNum{rxNode}')
+    """Return basic telemetry from localTelemetryData (per-radio metrics from MeshCore not yet wired)."""
     global localTelemetryData
-  
-    # throttle the telemetry requests to prevent spamming the device
     if 1 <= rxNode <= 9:
         if time.time() - localTelemetryData[0][f'interface{rxNode}'] < 600 and not userRequested:
             return -1
         localTelemetryData[0][f'interface{rxNode}'] = time.time()
 
-    # some telemetry data is not available in python-meshtastic?
-    # bring in values from the last telemetry dump for the node
     numPacketsTx = localTelemetryData[rxNode].get('numPacketsTx', 0)
     numPacketsRx = localTelemetryData[rxNode].get('numPacketsRx', 0)
     numPacketsTxErr = localTelemetryData[rxNode].get('numPacketsTxErr', 0)
     numPacketsRxErr = localTelemetryData[rxNode].get('numPacketsRxErr', 0)
-    numTotalNodes = localTelemetryData[rxNode].get('numTotalNodes', 0)
     totalOnlineNodes = localTelemetryData[rxNode].get('numOnlineNodes', 0)
-    numRXDupes = localTelemetryData[rxNode].get('numRXDupes', 0)
-    numTxRelays = localTelemetryData[rxNode].get('numTxRelays', 0)
-    heapFreeBytes = localTelemetryData[rxNode].get('heapFreeBytes', 0)
-    heapTotalBytes = localTelemetryData[rxNode].get('heapTotalBytes', 0)
-    # get the telemetry data for a node
-    chutil = round(interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("deviceMetrics", {}).get("channelUtilization", 0), 1)
-    airUtilTx = round(interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("deviceMetrics", {}).get("airUtilTx", 0), 1)
-    uptimeSeconds = interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("deviceMetrics", {}).get("uptimeSeconds", 0)
-    batteryLevel = interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("deviceMetrics", {}).get("batteryLevel", 0)
-    voltage = interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("deviceMetrics", {}).get("voltage", 0)
-    #numPacketsRx = interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("localStats", {}).get("numPacketsRx", 0)
-    #numPacketsTx = interface.nodes.get(decimal_to_hex(myNodeNum), {}).get("localStats", {}).get("numPacketsTx", 0)
-    numTotalNodes = len(interface.nodes) 
-    
+    numTotalNodes = len(_contacts)
+
     dataResponse = f"Telemetry:{rxNode}"
-
-    # packet info telemetry
     dataResponse += f" numPacketsRx:{numPacketsRx} numPacketsRxErr:{numPacketsRxErr} numPacketsTx:{numPacketsTx} numPacketsTxErr:{numPacketsTxErr}"
-
-    # Channel utilization and airUtilTx
-    dataResponse += " ChUtil%:" + str(round(chutil, 2)) + " AirTx%:" + str(round(airUtilTx, 2))
-
-    if chutil > 40:
-        logger.warning(f"System: High Channel Utilization {chutil}% on Device: {rxNode}")
-
-    if airUtilTx > 25:
-        logger.warning(f"System: High Air Utilization {airUtilTx}% on Device: {rxNode}")
-
-    # Number of nodes
-    dataResponse += " totalNodes:" + str(numTotalNodes) + " Online:" + str(totalOnlineNodes)
-
-    # Uptime
-    uptimeSeconds = getPrettyTime(uptimeSeconds)
-    dataResponse += " Uptime:" + str(uptimeSeconds)
-
-    # add battery info to the response
-    emji = "🔌" if batteryLevel == 101 else "🪫" if batteryLevel < 10 else "🔋"
-    dataResponse += f" Volt:{round(voltage, 1)}"
-
-    if batteryLevel < 25:
-        logger.warning(f"System: Low Battery Level: {batteryLevel}{emji} on Device: {rxNode}")
-        send_message(f"Low Battery Level: {batteryLevel}{emji} on Device: {rxNode}", {secure_channel}, 0, {secure_interface})
-    elif batteryLevel < 10:
-        logger.critical(f"System: Critical Battery Level: {batteryLevel}{emji} on Device: {rxNode}")
-
-    # if numRXDupes,numTxRelays,heapFreeBytes,heapTotalBytes are available loge them
-    # if numRXDupes != 0:
-    #     dataResponse += f" RXDupes:{numRXDupes}"
-    #     logger.debug(f"System: Device {rxNode} RX Dupes:{numRXDupes}")
-    # if numTxRelays != 0:
-    #     dataResponse += f" TxRelays:{numTxRelays}"
-    #     logger.debug(f"System: Device {rxNode} TX Relays:{numTxRelays}")
-    # if heapFreeBytes != 0 and heapTotalBytes != 0:
-    #     logger.debug(f"System: Device {rxNode} Heap Memory Free:{heapFreeBytes} Total:{heapTotalBytes}")
-        #dataResponse += f" Heap:{heapFreeBytes}/{heapTotalBytes}"
-
+    dataResponse += f" totalNodes:{numTotalNodes} Online:{totalOnlineNodes}"
     return dataResponse
 
 positionMetadata = {}
@@ -1547,6 +1271,19 @@ def initializeMeshLeaderboard():
     }
 
 initializeMeshLeaderboard()
+
+def update_leaderboard_from_rx(nodeID: str, rssi: float = 0):
+    """Update signal strength and message count leaderboard from a received DM."""
+    global meshLeaderboard
+    if rssi != 0:
+        if rssi > meshLeaderboard['highestDBm']['value']:
+            meshLeaderboard['highestDBm'] = {'nodeID': nodeID, 'value': rssi, 'timestamp': time.time()}
+        if rssi < meshLeaderboard['weakestDBm']['value']:
+            meshLeaderboard['weakestDBm'] = {'nodeID': nodeID, 'value': rssi, 'timestamp': time.time()}
+    counts = meshLeaderboard.setdefault('nodeMessageCounts', {})
+    counts[nodeID] = counts.get(nodeID, 0) + 1
+    if counts[nodeID] > meshLeaderboard['mostMessages']['value']:
+        meshLeaderboard['mostMessages'] = {'nodeID': nodeID, 'value': counts[nodeID], 'timestamp': time.time()}
 
 # Known Meshtastic firmware PKI routing errors and practical operator guidance.
 PKI_ROUTING_ERROR_HINTS = {
@@ -1979,7 +1716,7 @@ def noisyTelemetryCheck():
     top_three = list(sorted_positionMetadata.items())[:3]
     for nodeID, data in top_three:
         if data.get('packetCount', 0) > noisyTelemetryLimit:
-            logger.warning(f"System: Noisy Telemetry Detected from NodeID:{nodeID} ShortName:{get_name_from_number(nodeID, 'short', 1)} Packets:{data.get('packetCount', 0)}")
+            logger.warning(f"System: Noisy Telemetry Detected from NodeID:{nodeID} ShortName:{get_name_from_number(nodeID, 'long', 1)} Packets:{data.get('packetCount', 0)}")
             # reset the packet count for the node
             positionMetadata[nodeID]['packetCount'] = 0
 
@@ -2026,13 +1763,13 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
     if meshLeaderboard['lowestBattery']['nodeID']:
         nodeID = meshLeaderboard['lowestBattery']['nodeID']
         value = round(meshLeaderboard['lowestBattery']['value'], 1)
-        result += f"🪫 Low Battery: {value}% {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"🪫 Low Battery: {value}% {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Longest uptime
     if meshLeaderboard['longestUptime']['nodeID']:
         nodeID = meshLeaderboard['longestUptime']['nodeID']
         value = meshLeaderboard['longestUptime']['value']
-        result += f"🕰️ Uptime: {getPrettyTime(value)} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"🕰️ Uptime: {getPrettyTime(value)} {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Fastest speed
     if meshLeaderboard['fastestSpeed']['nodeID']:
@@ -2040,9 +1777,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_kmh = round(meshLeaderboard['fastestSpeed']['value'], 1)
         value_mph = round(value_kmh / 1.60934, 1)
         if use_metric:
-            result += f"🚓 Speed: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚓 Speed: {value_kmh} km/h {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"🚓 Speed: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚓 Speed: {value_mph} mph {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Tallest node
     if meshLeaderboard['tallestNode']['nodeID']:
@@ -2050,9 +1787,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_m = meshLeaderboard['tallestNode']['value']
         value_ft = round(value_m * 3.28084, 0)
         if use_metric:
-            result += f"🪜 Tallest: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🪜 Tallest: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"🪜 Tallest: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🪜 Tallest: {int(value_ft)}ft {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Highest altitude
     if meshLeaderboard['highestAltitude']['nodeID']:
@@ -2060,9 +1797,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_m = meshLeaderboard['highestAltitude']['value']
         value_ft = round(value_m * 3.28084, 0)
         if use_metric:
-            result += f"🚀 Altitude: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚀 Altitude: {int(round(value_m, 0))}m {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"🚀 Altitude: {int(value_ft)}ft {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🚀 Altitude: {int(value_ft)}ft {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Fastest airspeed
     if meshLeaderboard['fastestAirSpeed']['nodeID']:
@@ -2070,9 +1807,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_kmh = round(meshLeaderboard['fastestAirSpeed']['value'], 1)
         value_mph = round(value_kmh / 1.60934, 1)
         if use_metric:
-            result += f"✈️ Airspeed: {value_kmh} km/h {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"✈️ Airspeed: {value_kmh} km/h {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"✈️ Airspeed: {value_mph} mph {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"✈️ Airspeed: {value_mph} mph {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Coldest temperature
     if meshLeaderboard['coldestTemp']['nodeID']:
@@ -2080,9 +1817,9 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_c = round(meshLeaderboard['coldestTemp']['value'], 1)
         value_f = round((value_c * 9/5) + 32, 1)
         if use_metric:
-            result += f"🥶 Coldest: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥶 Coldest: {value_c}°C {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"🥶 Coldest: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥶 Coldest: {value_f}°F {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Hottest temperature
     if meshLeaderboard['hottestTemp']['nodeID']:
@@ -2090,57 +1827,57 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
         value_c = round(meshLeaderboard['hottestTemp']['value'], 1)
         value_f = round((value_c * 9/5) + 32, 1)
         if use_metric:
-            result += f"🥵 Hottest: {value_c}°C {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥵 Hottest: {value_c}°C {get_name_from_number(nodeID, 'long', 1)}\n"
         else:
-            result += f"🥵 Hottest: {value_f}°F {get_name_from_number(nodeID, 'short', 1)}\n"
+            result += f"🥵 Hottest: {value_f}°F {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Worst air quality
     if meshLeaderboard['worstAirQuality']['nodeID']:
         nodeID = meshLeaderboard['worstAirQuality']['nodeID']
         value = round(meshLeaderboard['worstAirQuality']['value'], 1)
-        result += f"💨 Worst IAQ: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"💨 Worst IAQ: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Weakest RF
     if meshLeaderboard['weakestDBm']['nodeID'] is not None:
         nodeID = meshLeaderboard['weakestDBm']['nodeID']
         value = meshLeaderboard['weakestDBm']['value']
-        result += f"📶 Weakest RF: {value} dBm {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"📶 Weakest RF: {value} dBm {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Best RF
     if meshLeaderboard['highestDBm']['nodeID'] is not None:
         nodeID = meshLeaderboard['highestDBm']['nodeID']
         value = meshLeaderboard['highestDBm']['value']
-        result += f"📶 Best RF: {value} dBm {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"📶 Best RF: {value} dBm {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Most Telemetry Messages
     if 'nodeTMessageCounts' in meshLeaderboard and meshLeaderboard['mostTMessages']['nodeID'] is not None:
         nodeID = meshLeaderboard['mostTMessages']['nodeID']
         value = meshLeaderboard['mostTMessages']['value']
-        result += f"📊 Most Telemetry: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"📊 Most Telemetry: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Most Emojis
     if meshLeaderboard.get('mostEmojis', {}).get('nodeID') is not None:
         nodeID = meshLeaderboard['mostEmojis']['nodeID']
         value = meshLeaderboard['mostEmojis']['value']
-        result += f"🤪 Most Emojis: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"🤪 Most Emojis: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Most Messages
     if 'nodeMessageCounts' in meshLeaderboard and meshLeaderboard['mostMessages']['nodeID'] is not None:
         nodeID = meshLeaderboard['mostMessages']['nodeID']
         value = meshLeaderboard['mostMessages']['value']
-        result += f"💬 Most Messages: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"💬 Most Messages: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Most WiFi devices seen
     if meshLeaderboard.get('mostPaxWiFi', {}).get('nodeID'):
         nodeID = meshLeaderboard['mostPaxWiFi']['nodeID']
         value = meshLeaderboard['mostPaxWiFi']['value']
-        result += f"📶 PAX Wifi: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"📶 PAX Wifi: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
 
     # Most BLE devices seen
     if meshLeaderboard.get('mostPaxBLE', {}).get('nodeID'):
         nodeID = meshLeaderboard['mostPaxBLE']['nodeID']
         value = meshLeaderboard['mostPaxBLE']['value']
-        result += f"📲 PAX BLE: {value} {get_name_from_number(nodeID, 'short', 1)}\n"
+        result += f"📲 PAX BLE: {value} {get_name_from_number(nodeID, 'long', 1)}\n"
     
     # Special packet detections
     if len(meshLeaderboard['adminPackets']) > 0:
@@ -2163,15 +1900,15 @@ def get_mesh_leaderboard(msg, fromID, deviceID):
     return result
 
 def get_sysinfo(nodeID=0, deviceID=1):
-    # Get the system telemetry data for return on the sysinfo command
-    sysinfo = ''
-    stats = str(displayNodeTelemetry(nodeID, deviceID, userRequested=True)) + " 🤖👀" + str(len(seenNodes))
-    if "numPacketsTx:0" in stats or stats == -1:
-        return "Gathering Telemetry try again later⏳"
-    # replace Telemetry with Int in string
-    stats = stats.replace("Telemetry", "Int")
-    sysinfo += f"📊{stats}"
-    return sysinfo
+    uptime = getPrettyTime(time.time() - _bot_start_time)
+    contacts = len(_contacts)
+    sessions = len(seenNodes)
+    own_prefix = globals().get(f'myNodeNum{deviceID}', '????????????')
+    own_name = _contacts.get(own_prefix, {}).get('name_long', own_prefix[:6].upper()) if own_prefix != '????????????' else '?'
+    mc = get_interface(deviceID)
+    if mc and mc.self_info:
+        own_name = mc.self_info.get('name', own_name)
+    return f"📊 {own_name} up:{uptime} contacts:{contacts} session:{sessions}DMs"
 
 async def handleSignalWatcher():
     from modules.radio import signalWatcher
@@ -2189,12 +1926,12 @@ async def handleSignalWatcher():
                 if type(sigWatchBroadcastCh) is list:
                     for ch in sigWatchBroadcastCh:
                         if antiSpam and ch != publicChannel:
-                            send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
+                            await send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
                         else:
                             logger.warning(f"System: antiSpam prevented Alert from Hamlib {msg}")
                 else:
                     if antiSpam and sigWatchBroadcastCh != publicChannel:
-                        send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
+                        await send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
                     else:
                         logger.warning(f"System: antiSpam prevented Alert from Hamlib {msg}")
 
@@ -2216,20 +1953,20 @@ async def handleFileWatcher():
                 if type(file_monitor_broadcastCh) is list:
                     for ch in file_monitor_broadcastCh:
                         if antiSpam and int(ch) != publicChannel:
-                            send_message(msg, int(ch), 0, 1)
+                            await send_message(msg, int(ch), 0, 1)
                             if multiple_interface:
                                 for i in range(2, 10):
                                     if globals().get(f'interface{i}_enabled'):
-                                        send_message(msg, int(ch), 0, i)
+                                        await send_message(msg, int(ch), 0, i)
                         else:
                             logger.warning(f"System: antiSpam prevented Alert from FileWatcher")
                 else:
                     if antiSpam and file_monitor_broadcastCh != publicChannel:
-                        send_message(msg, int(file_monitor_broadcastCh), 0, 1)
+                        await send_message(msg, int(file_monitor_broadcastCh), 0, 1)
                         if multiple_interface:
                             for i in range(2, 10):
                                 if globals().get(f'interface{i}_enabled'):
-                                    send_message(msg, int(file_monitor_broadcastCh), 0, i)
+                                    await send_message(msg, int(file_monitor_broadcastCh), 0, i)
                     else:
                         logger.warning(f"System: antiSpam prevented Alert from FileWatcher")
 
@@ -2253,12 +1990,12 @@ async def handleWsjtxWatcher():
             if type(sigWatchBroadcastCh) is list:
                 for ch in sigWatchBroadcastCh:
                     if antiSpam and int(ch) != publicChannel:
-                        send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
+                        await send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
                     else:
                         logger.warning(f"System: antiSpam prevented Alert from WSJT-X")
             else:
                 if antiSpam and sigWatchBroadcastCh != publicChannel:
-                    send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
+                    await send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
                 else:
                     logger.warning(f"System: antiSpam prevented Alert from WSJT-X")
         
@@ -2281,12 +2018,12 @@ async def handleJs8callWatcher():
             if type(sigWatchBroadcastCh) is list:
                 for ch in sigWatchBroadcastCh:
                     if antiSpam and int(ch) != publicChannel:
-                        send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
+                        await send_message(msg, int(ch), 0, sigWatchBroadcastInterface)
                     else:
                         logger.warning(f"System: antiSpam prevented Alert from JS8Call")
             else:
                 if antiSpam and sigWatchBroadcastCh != publicChannel:
-                    send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
+                    await send_message(msg, int(sigWatchBroadcastCh), 0, sigWatchBroadcastInterface)
                 else:
                     logger.warning(f"System: antiSpam prevented Alert from JS8Call")
         
@@ -2295,59 +2032,28 @@ async def handleJs8callWatcher():
 async def retry_interface(nodeID):
     global retry_int1, retry_int2, retry_int3, retry_int4, retry_int5, retry_int6, retry_int7, retry_int8, retry_int9
     global max_retry_count1, max_retry_count2, max_retry_count3, max_retry_count4, max_retry_count5, max_retry_count6, max_retry_count7, max_retry_count8, max_retry_count9
-    interface = globals()[f'interface{nodeID}']
-    retry_int = globals()[f'retry_int{nodeID}']
 
     if dont_retry_disconnect:
         logger.critical(f"System: dont_retry_disconnect is set, not retrying interface{nodeID}")
         exit_handler()
 
-    if interface is not None:
-        globals()[f'retry_int{nodeID}'] = True
-        globals()[f'max_retry_count{nodeID}'] -= 1
-        logger.debug(f"System: Retrying interface{nodeID} {globals()[f'max_retry_count{nodeID}']} attempts left")
-        try:
-            interface.close()
-            logger.debug(f"System: Retrying interface{nodeID} in 15 seconds")
-        except Exception as e:
-            logger.error(f"System: closing interface{nodeID}: {e}")
-
+    globals()[f'max_retry_count{nodeID}'] -= 1
     if globals()[f'max_retry_count{nodeID}'] == 0:
         logger.critical(f"System: Max retry count reached for interface{nodeID}")
         exit_handler()
 
+    logger.debug(f"System: Retrying Interface{nodeID} in 15 seconds, {globals()[f'max_retry_count{nodeID}']} attempts left")
+    globals()[f'interface{nodeID}'] = None
     await asyncio.sleep(15)
 
     try:
-        if retry_int:
-            interface = None
-            globals()[f'interface{nodeID}'] = None
-            interface_type = globals()[f'interface{nodeID}_type']
-            if interface_type == 'serial':
-                logger.debug(f"System: Retrying Interface{nodeID} Serial on port: {globals().get(f'port{nodeID}')}")
-                globals()[f'interface{nodeID}'] = meshtastic.serial_interface.SerialInterface(globals().get(f'port{nodeID}'))
-            elif interface_type == 'tcp':
-                host = globals().get(f'hostname{nodeID}', '127.0.0.1')
-                port = 4403
-                if isinstance(host, str) and ':' in host:
-                    maybe_host, maybe_port = host.rsplit(':', 1)
-                    if maybe_port.isdigit():
-                        host = maybe_host
-                        try:
-                            port = int(maybe_port)
-                        except ValueError:
-                            port = 4403
-                logger.debug(f"System: Retrying Interface{nodeID} TCP on hostname: {host}:{port}")
-                globals()[f'interface{nodeID}'] = meshtastic.tcp_interface.TCPInterface(hostname=host, portNumber=port)
-            elif interface_type == 'ble':
-                logger.debug(f"System: Retrying Interface{nodeID} BLE on mac: {globals().get(f'mac{nodeID}')}")
-                globals()[f'interface{nodeID}'] = meshtastic.ble_interface.BLEInterface(globals().get(f'mac{nodeID}'))
-            logger.debug(f"System: Interface{nodeID} Opened!")
-            # reset the retry_int and retry_count
-            globals()[f'max_retry_count{nodeID}'] = interface_retry_count
-            globals()[f'retry_int{nodeID}'] = False
+        mc = await _connect_interface(nodeID)
+        globals()[f'interface{nodeID}'] = mc
+        globals()[f'max_retry_count{nodeID}'] = interface_retry_count
+        globals()[f'retry_int{nodeID}'] = False
+        logger.debug(f"System: Interface{nodeID} reconnected!")
     except Exception as e:
-        logger.error(f"System: Error Opening interface{nodeID} on: {e}")
+        logger.error(f"System: Error reconnecting interface{nodeID}: {e}")
 
 handleSentinel_spotted = []
 handleSentinel_loop = 0
@@ -2389,7 +2095,7 @@ async def handleSentinel(deviceID):
                     resolution = metadata.get('precisionBits')
             # Send message alert
             logger.warning(f"System: {detectedNearby} on Interface{deviceID} Accuracy is {resolution}bits")
-            send_message(f"Sentry{deviceID}: {detectedNearby}", secure_channel, 0, secure_interface)
+            await send_message(f"Sentry{deviceID}: {detectedNearby}", secure_channel, 0, secure_interface)
             
             # Send email alerts
             if enableSMTP and email_sentry_alerts:
@@ -2421,7 +2127,7 @@ async def process_vox_queue():
             message = item
             for channel in sigWatchBroadcastCh:
                 if antiSpam and int(channel) != publicChannel:
-                    send_message(message, int(channel), 0, sigWatchBroadcastInterface)
+                    await send_message(message, int(channel), 0, sigWatchBroadcastInterface)
 
 async def handleTTS():
     from modules.radio import generate_and_play_tts, available_voices
@@ -2466,25 +2172,18 @@ async def watchdog():
             retry_int = globals().get(f'retry_int{i}')
             int_enabled = globals().get(f'interface{i}_enabled')
             if interface is not None and not retry_int and int_enabled:
-                try:
-                    firmware = getNodeFirmware(0, i)
-                except Exception as e:
-                    logger.error(f"System: communicating with interface{i}, trying to reconnect: {e}")
-                    globals()[f'retry_int{i}'] = True
+                if sentry_enabled:
+                    await handleSentinel(i)
 
-                if not retry_int and int_enabled:
-                    if sentry_enabled:
-                        await handleSentinel(i)
+                await handleMultiPing(0, i)
 
-                    handleMultiPing(0, i)
+                if usAlerts or checklist_enabled or enableDEalerts:
+                    await handleAlertBroadcast(i)
 
-                    if usAlerts or checklist_enabled or enableDEalerts:
-                        handleAlertBroadcast(i)
-
-                    intData = displayNodeTelemetry(0, i)
-                    if intData != -1 and localTelemetryData[0][f'lastAlert{i}'] != intData:
-                        logger.debug(intData + f" Firmware:{firmware}")
-                        localTelemetryData[0][f'lastAlert{i}'] = intData
+                intData = displayNodeTelemetry(0, i)
+                if intData != -1 and localTelemetryData[0][f'lastAlert{i}'] != intData:
+                    logger.debug(intData)
+                    localTelemetryData[0][f'lastAlert{i}'] = intData
 
             if retry_int and int_enabled:
                 try:
@@ -2534,22 +2233,19 @@ async def dataPersistenceLoop():
         saveAllData()
 
 def exit_handler():
-    # Close the interface and save all data
-    logger.debug(f"System: Closing Autoresponder")
+    logger.debug("System: Closing Autoresponder")
     try:
-        logger.debug(f"System: Closing Interface1")
-        interface1.close()
-        if multiple_interface:
-            for i in range(2, 10):
-                if globals().get(f'interface{i}_enabled'):
-                    logger.debug(f"System: Closing Interface{i}")
-                    globals()[f'interface{i}'].close()
+        for i in range(1, 10):
+            mc = globals().get(f'interface{i}')
+            if mc:
+                logger.debug(f"System: Closing Interface{i}")
+                try:
+                    mc.close()
+                except Exception:
+                    pass
     except Exception as e:
         logger.error(f"System: closing: {e}")
 
     saveAllData()
-
-    logger.debug(f"System: Exiting")
-    asyncLoop.stop()
-    asyncLoop.close()
-    exit (0)
+    logger.debug("System: Exiting")
+    exit(0)
