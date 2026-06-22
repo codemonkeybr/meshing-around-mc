@@ -1,6 +1,6 @@
 # Modules and Adding Features
 
-This document explains how to add new modules and commands to your Meshtastic mesh-bot project.
+This document explains how to add new modules and commands to your MeshCore mesh-bot project.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ This document explains how to add new modules and commands to your Meshtastic me
 ## Overview
 
 For code testing, see `etc/simulator.py` to simulate a bot.  
-You can also use `meshtasticd` (Linux-native) in `noradio` mode with MQTT server and client to emulate a mesh network.
+You can also use `etc/simulator.py` to emulate a mesh network without radio hardware.
 
 ---
 
@@ -116,7 +116,7 @@ This will call the default script located at `script/runShell.sh` and return its
   - *Configuration Problems:* Double-check `settings.py` and `config.ini` for typos or missing entries.
 - **Testing:**  
   - Use `etc/simulator.py` for local testing without radio hardware.
-  - Use `meshtasticd` in `noradio` mode for network emulation.
+  - Use `etc/simulator.py` for network emulation without radio hardware.
 - **Python Environment:**  
   - Use a virtual environment (`python3 -m venv venv`) to manage dependencies.
   - Install requirements with `pip install -r requirements.txt`.

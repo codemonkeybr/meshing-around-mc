@@ -216,7 +216,7 @@ If you encounter errors related to file or directory permissions (e.g., "Permiss
 
 - For systemd service issues, check logs with:
   ```sh
-  sudo journalctl -u mesh_bot.service
+  sudo journalctl -u meshing-around_bot.service
   ```
 
 If problems persist, double-check that the user specified in your service files matches the owner of the project files and directories.

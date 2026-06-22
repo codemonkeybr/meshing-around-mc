@@ -39,7 +39,7 @@ If you have linux-native running and errors such as..
   File "/usr/lib/python3.11/socketserver.py", line 472, in server_bind
     self.socket.bind(self.server_address)
 ```
-modify the modules/web.py to use a real IP address, meshtasticD-native is binding to 127.0.0.1
+modify the modules/web.py to use a real IP address, the web server is binding to 127.0.0.1
 
 ```python
 # Set the desired IP address
