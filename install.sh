@@ -26,15 +26,15 @@ if [[ $NOPE -eq 1 ]]; then
     sudo systemctl stop mesh_bot_w3_server || true
     sudo systemctl disable mesh_bot_w3_server || true
 
-    sudo systemctl stop mesh_bot_reporting || true
-    sudo systemctl disable mesh_bot_reporting || true
+    sudo systemctl stop meshing-around_reporting || true
+    sudo systemctl disable meshing-around_reporting || true
 
     sudo rm -f /etc/systemd/system/meshing-around_bot.service
-    sudo rm -f /etc/systemd/system/mesh_bot_reporting
+    sudo rm -f /etc/systemd/system/meshing-around_reporting
     sudo rm -f /etc/systemd/system/pong_bot.service
     sudo rm -f /etc/systemd/system/mesh_bot_w3_server.service
-    sudo rm -f /etc/systemd/system/mesh_bot_reporting.service
-    sudo rm -f /etc/systemd/system/mesh_bot_reporting.timer
+    sudo rm -f /etc/systemd/system/meshing-around_reporting.service
+    sudo rm -f /etc/systemd/system/meshing-around_reporting.timer
 
     sudo systemctl daemon-reload
     sudo systemctl reset-failed
@@ -193,14 +193,14 @@ mkdir -p "$program_path/data"
 # copy service files
 cp etc/pong_bot.tmp etc/pong_bot.service
 cp etc/meshing-around_bot.tmp etc/meshing-around_bot.service
-cp etc/mesh_bot_reporting.tmp etc/mesh_bot_reporting.service
+cp etc/meshing-around_reporting.tmp etc/meshing-around_reporting.service
 cp etc/mesh_bot_w3_server.tmp etc/mesh_bot_w3_server.service
 
 # set the correct path in the service file
 replace="s|/dir/|$program_path/|g"
 sed -i "$replace" etc/pong_bot.service
 sed -i "$replace" etc/meshing-around_bot.service
-sed -i "$replace" etc/mesh_bot_reporting.service
+sed -i "$replace" etc/meshing-around_reporting.service
 sed -i "$replace" etc/mesh_bot_w3_server.service
 
 # copy modules/custom_scheduler.py template if it does not exist
@@ -339,14 +339,14 @@ echo "----------------------------------------------"
 replace="s|User=pi|User=$bot_user|g"
 sed -i "$replace" etc/pong_bot.service
 sed -i "$replace" etc/meshing-around_bot.service
-sed -i "$replace" etc/mesh_bot_reporting.service
-sed -i "$replace" etc/mesh_bot_reporting.timer
+sed -i "$replace" etc/meshing-around_reporting.service
+sed -i "$replace" etc/meshing-around_reporting.timer
 # set the correct group in the service file
 replace="s|Group=pi|Group=$bot_user|g"
 sed -i "$replace" etc/pong_bot.service
 sed -i "$replace" etc/meshing-around_bot.service
-sed -i "$replace" etc/mesh_bot_reporting.service
-sed -i "$replace" etc/mesh_bot_reporting.timer
+sed -i "$replace" etc/meshing-around_reporting.service
+sed -i "$replace" etc/meshing-around_reporting.timer
 printf "\n service files updated\n"
 
 # add user to groups for serial access
@@ -382,16 +382,16 @@ if [[ $(echo "${bot}" | grep -i "^m") ]]; then
     service="meshing-around_bot"
 fi
 
-# install mesh_bot_reporting timer to run daily at 4:20 am
+# install meshing-around_reporting timer to run daily at 4:20 am
 echo ""
-echo "Installing mesh_bot_reporting.timer to run mesh_bot_reporting daily at 4:20 am..."
-sudo cp etc/mesh_bot_reporting.service /etc/systemd/system/
-sudo cp etc/mesh_bot_reporting.timer /etc/systemd/system/
+echo "Installing meshing-around_reporting.timer to run meshing-around_reporting daily at 4:20 am..."
+sudo cp etc/meshing-around_reporting.service /etc/systemd/system/
+sudo cp etc/meshing-around_reporting.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable mesh_bot_reporting.timer
-sudo systemctl start mesh_bot_reporting.timer
-echo "mesh_bot_reporting.timer installed and enabled"
-echo "Check timer status with: systemctl status mesh_bot_reporting.timer"
+sudo systemctl enable meshing-around_reporting.timer
+sudo systemctl start meshing-around_reporting.timer
+echo "meshing-around_reporting.timer installed and enabled"
+echo "Check timer status with: systemctl status meshing-around_reporting.timer"
 echo "List all timers with: systemctl list-timers"
 echo ""
 
@@ -472,10 +472,10 @@ if [[ $(echo "${embedded}" | grep -i "^n") ]]; then
     printf "\n older chron statment to run the report generator hourly:\n" >> install_notes.txt
     #printf "0 * * * * /usr/bin/python3 $program_path/etc/report_generator5.py" >> install_notes.txt
     #printf "  to edit crontab run 'crontab -e'\n" >> install_notes.txt
-    printf "\nmesh_bot_reporting.timer installed to run daily at 4:20 am\n" >> install_notes.txt
-    printf "Check timer status: systemctl status mesh_bot_reporting.timer\n" >> install_notes.txt
+    printf "\nmeshing-around_reporting.timer installed to run daily at 4:20 am\n" >> install_notes.txt
+    printf "Check timer status: systemctl status meshing-around_reporting.timer\n" >> install_notes.txt
     printf "List all timers: systemctl list-timers\n" >> install_notes.txt
-    printf "View timer logs: journalctl -u mesh_bot_reporting.timer\n" >> install_notes.txt
+    printf "View timer logs: journalctl -u meshing-around_reporting.timer\n" >> install_notes.txt
     printf "*** Stay Up to date using 'bash update.sh' ***\n" >> install_notes.txt
     printf "sudo ./update.sh && sudo -u meshbot ./launch.sh mesh_bot.py\n" >> install_notes.txt
     
@@ -508,8 +508,8 @@ else
     printf "older crontab to run the report generator hourly:" >> install_notes.txt
     #printf "0 * * * * /usr/bin/python3 $program_path/etc/report_generator5.py" >> install_notes.txt
     #printf "  to edit crontab run 'crontab -e'" >> install_notes.txt
-    printf "\nmesh_bot_reporting.timer installed to run daily at 4:20 am\n" >> install_notes.txt
-    printf "Check timer status: systemctl status mesh_bot_reporting.timer\n" >> install_notes.txt
+    printf "\nmeshing-around_reporting.timer installed to run daily at 4:20 am\n" >> install_notes.txt
+    printf "Check timer status: systemctl status meshing-around_reporting.timer\n" >> install_notes.txt
     printf "List all timers: systemctl list-timers\n" >> install_notes.txt
     printf "*** Stay Up to date using 'bash update.sh' ***\n" >> install_notes.txt
     printf "sudo ./update.sh && sudo -u meshbot ./launch.sh mesh_bot.py\n" >> install_notes.txt
@@ -548,15 +548,15 @@ exit 0
 # sudo systemctl stop mesh_bot_w3_server
 # sudo systemctl disable mesh_bot_w3_server
 
-# sudo systemctl stop mesh_bot_reporting
-# sudo systemctl disable mesh_bot_reporting
+# sudo systemctl stop meshing-around_reporting
+# sudo systemctl disable meshing-around_reporting
 
 # sudo rm /etc/systemd/system/meshing-around_bot.service
-# sudo rm /etc/systemd/system/mesh_bot_reporting
+# sudo rm /etc/systemd/system/meshing-around_reporting
 # sudo rm /etc/systemd/system/pong_bot.service
 # sudo rm /etc/systemd/system/mesh_bot_w3_server.service
-# sudo rm /etc/systemd/system/mesh_bot_reporting.service
-# sudo rm /etc/systemd/system/mesh_bot_reporting.timer
+# sudo rm /etc/systemd/system/meshing-around_reporting.service
+# sudo rm /etc/systemd/system/meshing-around_reporting.timer
 
 # sudo systemctl daemon-reload
 # sudo systemctl reset-failed
