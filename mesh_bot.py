@@ -1897,6 +1897,9 @@ def handle_boot(mesh=True):
         if my_settings.scheduler_enabled:
             logger.debug(f"System: Scheduler Enabled. Default Device:{my_settings.schedulerInterface} Channel:{my_settings.schedulerChannel}")
 
+        if my_settings.advert_enabled:
+            logger.debug(f"System: Advertiser Enabled. Interval:{my_settings.advert_interval}m Flood:{my_settings.advert_flood} OnStart:{my_settings.advert_on_start} Device:{my_settings.advert_interface}")
+
     except Exception as e:
         logger.error(f"System: Error during boot: {e}")
 
@@ -2477,6 +2480,28 @@ async def main():
             setup_scheduler(schedulerMotd, MOTD, schedulerMessage, schedulerChannel, schedulerInterface,
     schedulerValue, schedulerTime, schedulerInterval)
             tasks.append(asyncio.create_task(run_scheduler_loop(), name="scheduler"))
+
+        if my_settings.advert_enabled:
+            import schedule as _schedule
+            from modules.scheduler import run_scheduler_loop
+            from modules.system import get_interface as _get_iface
+            _advert_flood = my_settings.advert_flood
+            _advert_iface = my_settings.advert_interface
+
+            def _send_advert():
+                mc = _get_iface(_advert_iface)
+                if mc:
+                    asyncio.ensure_future(mc.commands.send_advert(flood=_advert_flood))
+                else:
+                    logger.warning(f"System: Advertiser: interface {_advert_iface} not available")
+
+            if my_settings.advert_on_start:
+                _send_advert()
+
+            _schedule.every(my_settings.advert_interval).minutes.do(_send_advert)
+            logger.info(f"System: Advertiser scheduled every {my_settings.advert_interval}m flood={_advert_flood} on interface {_advert_iface}")
+            if not my_settings.scheduler_enabled:
+                tasks.append(asyncio.create_task(run_scheduler_loop(), name="scheduler"))
         
         logger.debug(f"System: Starting {len(tasks)} async tasks")
         
