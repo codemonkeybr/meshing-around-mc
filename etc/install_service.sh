@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install mesh_bot as a systemd service for the current user.
+# Install meshing-around_bot as a systemd service for the current user.
 # Defaults:
 #   - project path: /opt/meshing-around-mc
-#   - service name: mesh_bot
+#   - service name: meshing-around_bot
 #   - service user: invoking user (SUDO_USER when using sudo)
 
-SERVICE_NAME="mesh_bot"
+SERVICE_NAME="meshing-around_bot"
 PROJECT_PATH="/opt/meshing-around-mc"
 SERVICE_USER="${SUDO_USER:-${USER:-}}"
 SERVICE_GROUP=""
 USE_LAUNCH_SH=1
-NEED_MESHTASTICD=1
+NEED_MESHTASTICD=0
 DRY_RUN=0
 
 usage() {
@@ -105,14 +105,7 @@ else
     EXEC_START="/usr/bin/python3 $PROJECT_PATH/mesh_bot.py"
 fi
 
-if [[ $NEED_MESHTASTICD -eq 1 ]]; then
-    if ! systemctl list-units --type=service --no-pager --all | grep meshtasticd.service; then
-        die "meshtasticd.service dependency not found. to ignore this check, run with --no-meshtasticd flag."
-    fi
-    MESHTASTICD_DEPENDENCY_LINES=$'\nAfter=meshtasticd.service\nRequires=meshtasticd.service'
-else
-    MESHTASTICD_DEPENDENCY_LINES=""
-fi
+MESHTASTICD_DEPENDENCY_LINES=""
 
 SERVICE_FILE_CONTENT="[Unit]
 Description=MESH-BOT
