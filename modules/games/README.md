@@ -1,4 +1,4 @@
-# Meshtastic Mesh-Bot Games
+# MeshCore Mesh-Bot Games
 
 ## Game Index
 
@@ -21,7 +21,7 @@
 
 # Blackjack Game Module
 
-This module implements a classic game of Blackjack (Casino 21) for the Meshtastic mesh-bot.
+This module implements a classic game of Blackjack (Casino 21) for the MeshCore mesh-bot.
 
 ## How to Play
 
@@ -86,11 +86,11 @@ Bet or Leave?
 ## Credits
 
 - Ported from [Himan10/BlackJack](https://github.com/Himan10/BlackJack)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 # DopeWars Game Module
 
-A text-based trading game inspired by the classic DopeWars/DrugWars, adapted for the Meshtastic mesh-bot.
+A text-based trading game inspired by the classic DopeWars/DrugWars, adapted for the MeshCore mesh-bot.
 
 ## How to Play
 
@@ -155,11 +155,11 @@ Buy💸, Sell💰, Fly🛫?
 ## Credits
 
 - Ported from [Reconfirefly/drugwars](https://github.com/Reconfirefly/drugwars)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 # GolfSim Game Module
 
-A text-based golf simulator for the Meshtastic mesh-bot. Play a full 9-hole round, choose your clubs, and try to set a new course record!
+A text-based golf simulator for the MeshCore mesh-bot. Play a full 9-hole round, choose your clubs, and try to set a new course record!
 
 ## How to Play
 
@@ -223,7 +223,7 @@ You've hit a total of 5 strokes today, for +Bogey
 ## Credits
 
 - Ported from [danfriedman30/pythongame](https://github.com/danfriedman30/pythongame)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 # Lemonade Stand Game Module
 
@@ -302,11 +302,11 @@ Play another week🥤? or (E)nd Game
 ## Credits
 
 - Ported from [tigerpointe/Lemonade-Stand](https://github.com/tigerpointe/Lemonade-Stand)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 # Tic-Tac-Toe Game Module
 
-A classic Tic-Tac-Toe game for the Meshtastic mesh-bot. Play against the bot, track your stats, and see if you can beat the AI!
+A classic Tic-Tac-Toe game for the MeshCore mesh-bot. Play against the bot, track your stats, and see if you can beat the AI!
 
 ![Example Use](../../etc/3dttt.jpg "Example Use")
 
@@ -378,11 +378,11 @@ Your turn! Pick 1-9:
 
 ## Credits
 
-- Written for Meshtastic mesh-bot by Martin, refactored by K7MHI
+- Written for MeshCore mesh-bot by Martin, refactored by K7MHI
 
 # MasterMind Game Module
 
-A text-based version of the classic code-breaking game MasterMind for the Meshtastic mesh-bot. Try to guess the secret color code in as few turns as possible!
+A text-based version of the classic code-breaking game MasterMind for the MeshCore mesh-bot. Try to guess the secret color code in as few turns as possible!
 
 ## How to Play
 
@@ -442,11 +442,11 @@ Would you like to play again? (N)ormal, (H)ard, or e(X)pert?
 ## Credits
 
 - Ported from [pwdkramer/pythonMastermind](https://github.com/pwdkramer/pythonMastermind)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 # Video Poker Game Module
 
-A text-based Video Poker game for the Meshtastic mesh-bot. Play classic five-card draw poker, place your bets, and try to build your bankroll!
+A text-based Video Poker game for the MeshCore mesh-bot. Play classic five-card draw poker, place your bets, and try to build your bankroll!
 
 ## How to Play
 
@@ -518,12 +518,12 @@ Place your Bet, or (L)eave Table.
 ## Credits
 
 - Ported from [devtronvarma/Video-Poker-Terminal-Game](https://github.com/devtronvarma/Video-Poker-Terminal-Game)
-- Adapted for Meshtastic mesh-bot by K7MHI Kelly Keeton 2024
+- Adapted for MeshCore mesh-bot by K7MHI Kelly Keeton 2024
 
 
 # Battleship Game Module
 
-A classic Battleship game for the Meshtastic mesh-bot. Play solo against the AI or challenge another user in peer-to-peer (P2P) mode!
+A classic Battleship game for the MeshCore mesh-bot. Play solo against the AI or challenge another user in peer-to-peer (P2P) mode!
 
 ## How to Play
 
@@ -590,7 +590,7 @@ Your ships: 5/5 afloat
 
 ## Credits
 
-- Written for Meshtastic mesh-bot by K7MHI Kelly Keeton 2025
+- Written for MeshCore mesh-bot by K7MHI Kelly Keeton 2025
 
 # Word of the Day Game — Rules & Features
 
@@ -632,7 +632,7 @@ Your ships: 5/5 afloat
 
 # Hangman Game Module
 
-A classic word-guessing game for the Meshtastic mesh-bot. Try to guess the hidden word one letter at a time before you run out of chances!
+A classic word-guessing game for the MeshCore mesh-bot. Try to guess the hidden word one letter at a time before you run out of chances!
 
 ## How to Play
 
@@ -693,11 +693,11 @@ Guess a letter
 
 ## Credits
 
-- Written for Meshtastic mesh-bot by ZR1RF Johannes le Roux 2025
+- Written for MeshCore mesh-bot by ZR1RF Johannes le Roux 2025
 
 # Quiz Game Module
 
-This module implements a multiplayer quiz game for the Meshtastic mesh-bot.
+This module implements a multiplayer quiz game for the MeshCore mesh-bot.
 
 ## How to Play
 
@@ -750,14 +750,14 @@ This module implements a multiplayer quiz game for the Meshtastic mesh-bot.
 
 ---
 
-**Written for Meshtastic mesh-bot by K7MHI Kelly Keeton 2025**
+**Written for MeshCore mesh-bot by K7MHI Kelly Keeton 2025**
 
 Certainly! Here’s documentation for the **Survey Game Module** in the same format as your other game modules:
 
 ---
 
 # Survey  Module "game"
-This module implements a survey system for the Meshtastic mesh-bot.
+This module implements a survey system for the MeshCore mesh-bot.
 
 ## How to Play
 
@@ -806,7 +806,7 @@ This module implements a survey system for the Meshtastic mesh-bot.
 
 ---
 
-**Written for Meshtastic mesh-bot by K7MHI Kelly Keeton 2025**
+**Written for MeshCore mesh-bot by K7MHI Kelly Keeton 2025**
 
 ___
 

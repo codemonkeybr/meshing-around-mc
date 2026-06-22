@@ -1,4 +1,4 @@
-# Meshtastic Mesh-Bot Modules
+# MeshCore Mesh-Bot Modules
 
 This document provides an overview of all modules available in the Mesh-Bot project, including their features, usage, and configuration.
 
@@ -47,7 +47,7 @@ See [modules/adding_more.md](adding_more.md) for developer notes.
   - `ping stop` — Stop auto-ping
 
 - **Description:**  
-  Sends a ping to the bot. The bot responds with signal and routing information such as SNR (Signal-to-Noise Ratio), RSSI (Received Signal Strength Indicator), hop count, and gateway status. Used for field reports, connectivity checks, and diagnostics.
+  Sends a ping to the bot. The bot responds with signal and routing information such as SNR (Signal-to-Noise Ratio), RSSI (Received Signal Strength Indicator), and hop count. Used for field reports, connectivity checks, and diagnostics.
 
 #### **Response Types and Examples**
 
@@ -57,12 +57,9 @@ See [modules/adding_more.md](adding_more.md) for developer notes.
   ```
   Response:  
   ```
-  🏓PONG [RF]
+  🏓PONG
   SNR:12.5 RSSI:-80
   ```
-  - `[GW]` = Received via Gateway (internet or MQTT)
-  - `[RF]` = Received via direct radio
-  - `[F]` = Received via mesh/flood route
 
 - **Meta Ping:**
   ```
@@ -70,7 +67,7 @@ See [modules/adding_more.md](adding_more.md) for developer notes.
   ```
   Response:  
   ```
-  🏓PONG @Top Of Hill [RF]
+  🏓PONG @Top Of Hill
   SNR: 12.5, RSSI: -80, Hops: 2
   ```
 
@@ -101,9 +98,7 @@ See [modules/adding_more.md](adding_more.md) for developer notes.
 
 - **SNR:** Signal-to-Noise Ratio (dB) — higher is better.
 - **RSSI:** Received Signal Strength Indicator (dBm) — closer to 0 is stronger.
-- **[GW]:** Message received via Gateway (internet/MQTT).
-- **[RF]:** Message received via direct radio.
-- **[F]:** Message received via mesh/flood route.
+- **Hops:** Number of mesh hops the packet traversed to reach the bot.
 
 - **Joke via BBS DM:** If you ping `@'shortname'` and BBS is enabled, the bot will DM a joke to that user.
 
@@ -629,9 +624,9 @@ The `latest` command allows you to fetch current news headlines or articles on a
   ```
   Example:
   ```
-  latest meshtastic
+  latest meshcore
   ```
-  This will return the most recent news articles about "meshtastic".
+  This will return the most recent news articles about "meshcore".
 
 - **General latest news:**
   ```
@@ -656,14 +651,14 @@ newsAPIregion = us
 ### Example Output
 
 ```
-🗞️:📰Meshtastic project launches new firmware
-The open-source mesh radio project Meshtastic has released a major firmware update...
+🗞️:📰MeshCore project launches new firmware
+The open-source mesh radio project MeshCore has released a major firmware update...
 
-📰How Meshtastic is changing off-grid communication
-A look at how Meshtastic devices are being used for emergency response...
+📰How MeshCore is changing off-grid communication
+A look at how MeshCore devices are being used for emergency response...
 
-📰Meshtastic featured at DEF CON 2025
-The Meshtastic team presented new features at DEF CON, drawing large crowds...
+📰MeshCore featured at DEF CON 2025
+The MeshCore team presented new features at DEF CON, drawing large crowds...
 ```
 
 ### Notes
@@ -1107,10 +1102,7 @@ If you continue to have issues, review the logs for error messages and consult t
 ### Configuration Guide
 The following is documentation for the config.ini file
 
-If you have not done so, or want to 'factory reset', copy the [config.template](config.template) to `config.ini` and set the appropriate interface for your method (serial/ble/tcp). While BLE and TCP will work, they are not as reliable as serial connections. There is a watchdog to reconnect TCP if possible. To get the BLE MAC address, use:
-```sh
-meshtastic --ble-scan
-```
+If you have not done so, or want to 'factory reset', copy the [config.template](config.template) to `config.ini` and set the appropriate interface for your method (serial/ble/tcp). While BLE and TCP will work, they are not as reliable as serial connections. There is a watchdog to reconnect TCP if possible. To get the BLE MAC address, use your OS Bluetooth tools (e.g. `bluetoothctl scan on` on Linux) or the MeshCore companion app.
 
 **Note**: The code has been tested with a single BLE device and is written to support only one BLE port.
 
@@ -1204,7 +1196,7 @@ highflyOpenskynetwork = True # check with OpenSkyNetwork if highfly detected for
 ```
 
 ### E-Mail / SMS Settings
-To enable connectivity with SMTP allows messages from meshtastic into SMTP. The term SMS here is for connection via [carrier email](https://avtech.com/articles/138/list-of-email-to-sms-addresses/)
+To enable connectivity with SMTP allows messages from MeshCore into SMTP. The term SMS here is for connection via [carrier email](https://avtech.com/articles/138/list-of-email-to-sms-addresses/)
 
 ```ini
 [smtp]
@@ -1215,7 +1207,7 @@ sysopEmails =
 # See config.template for all the SMTP settings
 SMTP_SERVER = smtp.gmail.com
 SMTP_AUTH = True
-EMAIL_SUBJECT = Meshtastic✉️
+EMAIL_SUBJECT = MeshCore✉️
 ```
 
 ### Emergency Response Handler
@@ -1307,7 +1299,7 @@ To set up a local Kiwix server:
 3. Run the server: `kiwix-serve --port 8080 wikipedia_en_100_nopic_2025-09.zim`
 4. Set `useKiwixServer = True` in your config.ini with `wikipedia = True`
 
-The bot will automatically extract and truncate content to fit Meshtastic's message size limits (~500 characters).
+The bot will automatically extract and truncate content to fit MeshCore's message size limits (~500 characters).
 
 ### Radio Monitoring
 A module allowing a Hamlib compatible radio to connect to the bot. When functioning, it will message the configured channel with a message of in use. **Requires hamlib/rigctld to be running as a service.**

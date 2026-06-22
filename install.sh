@@ -17,8 +17,8 @@ if [[ $NOPE -eq 1 ]]; then
     echo "Uninstalling Meshing Around ..."
     echo "----------------------------------------------"
     
-    sudo systemctl stop mesh_bot || true
-    sudo systemctl disable mesh_bot || true
+    sudo systemctl stop meshing-around_bot || true
+    sudo systemctl disable meshing-around_bot || true
 
     sudo systemctl stop pong_bot || true
     sudo systemctl disable pong_bot || true
@@ -29,7 +29,7 @@ if [[ $NOPE -eq 1 ]]; then
     sudo systemctl stop mesh_bot_reporting || true
     sudo systemctl disable mesh_bot_reporting || true
 
-    sudo rm -f /etc/systemd/system/mesh_bot.service
+    sudo rm -f /etc/systemd/system/meshing-around_bot.service
     sudo rm -f /etc/systemd/system/mesh_bot_reporting
     sudo rm -f /etc/systemd/system/pong_bot.service
     sudo rm -f /etc/systemd/system/mesh_bot_w3_server.service
@@ -192,14 +192,14 @@ mkdir -p "$program_path/data"
 
 # copy service files
 cp etc/pong_bot.tmp etc/pong_bot.service
-cp etc/mesh_bot.tmp etc/mesh_bot.service
+cp etc/meshing-around_bot.tmp etc/meshing-around_bot.service
 cp etc/mesh_bot_reporting.tmp etc/mesh_bot_reporting.service
 cp etc/mesh_bot_w3_server.tmp etc/mesh_bot_w3_server.service
 
 # set the correct path in the service file
 replace="s|/dir/|$program_path/|g"
 sed -i "$replace" etc/pong_bot.service
-sed -i "$replace" etc/mesh_bot.service
+sed -i "$replace" etc/meshing-around_bot.service
 sed -i "$replace" etc/mesh_bot_reporting.service
 sed -i "$replace" etc/mesh_bot_w3_server.service
 
@@ -273,7 +273,7 @@ else
 
             # config service files for virtual environment
             replace="s|python3 mesh_bot.py|/usr/bin/bash launch.sh mesh|g"
-            sed -i "$replace" etc/mesh_bot.service
+            sed -i "$replace" etc/meshing-around_bot.service
             replace="s|python3 pong_bot.py|/usr/bin/bash launch.sh pong|g"
             sed -i "$replace" etc/pong_bot.service
 
@@ -338,13 +338,13 @@ echo "----------------------------------------------"
 # set the correct user in the service file
 replace="s|User=pi|User=$bot_user|g"
 sed -i "$replace" etc/pong_bot.service
-sed -i "$replace" etc/mesh_bot.service
+sed -i "$replace" etc/meshing-around_bot.service
 sed -i "$replace" etc/mesh_bot_reporting.service
 sed -i "$replace" etc/mesh_bot_reporting.timer
 # set the correct group in the service file
 replace="s|Group=pi|Group=$bot_user|g"
 sed -i "$replace" etc/pong_bot.service
-sed -i "$replace" etc/mesh_bot.service
+sed -i "$replace" etc/meshing-around_bot.service
 sed -i "$replace" etc/mesh_bot_reporting.service
 sed -i "$replace" etc/mesh_bot_reporting.timer
 printf "\n service files updated\n"
@@ -375,11 +375,11 @@ fi
 
 if [[ $(echo "${bot}" | grep -i "^m") ]]; then
     # install service for mesh bot
-    sudo cp etc/mesh_bot.service /etc/systemd/system/
-    sudo systemctl enable mesh_bot.service
+    sudo cp etc/meshing-around_bot.service /etc/systemd/system/
+    sudo systemctl enable meshing-around_bot.service
     sudo systemctl daemon-reload
-    echo "to start mesh bot service: systemctl start mesh_bot"
-    service="mesh_bot"
+    echo "to start mesh bot service: systemctl start meshing-around_bot"
+    service="meshing-around_bot"
 fi
 
 # install mesh_bot_reporting timer to run daily at 4:20 am
@@ -539,8 +539,8 @@ exit 0
 
 # to uninstall the product run the following commands as needed
 
-# sudo systemctl stop mesh_bot
-# sudo systemctl disable mesh_bot
+# sudo systemctl stop meshing-around_bot
+# sudo systemctl disable meshing-around_bot
 
 # sudo systemctl stop pong_bot
 # sudo systemctl disable pong_bot
@@ -551,7 +551,7 @@ exit 0
 # sudo systemctl stop mesh_bot_reporting
 # sudo systemctl disable mesh_bot_reporting
 
-# sudo rm /etc/systemd/system/mesh_bot.service
+# sudo rm /etc/systemd/system/meshing-around_bot.service
 # sudo rm /etc/systemd/system/mesh_bot_reporting
 # sudo rm /etc/systemd/system/pong_bot.service
 # sudo rm /etc/systemd/system/mesh_bot_w3_server.service

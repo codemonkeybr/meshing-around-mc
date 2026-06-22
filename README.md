@@ -1,6 +1,6 @@
 # Mesh Bot for Network Testing and BBS Activities
 
-Mesh Bot is a feature-rich Python bot designed to enhance your [Meshtastic](https://meshtastic.org/docs/introduction/) network experience. It provides powerful tools for network testing, messaging, games, and more—all via text-based message delivery. Whether you want to test your mesh, send messages, or play games, [mesh_bot.py](mesh_bot.py) has you covered.
+Mesh Bot is a feature-rich Python bot designed to enhance your [MeshCore](https://meshcore.io/) network experience. It provides powerful tools for network testing, messaging, games, and more—all via text-based message delivery. Whether you want to test your mesh, send messages, or play games, [mesh_bot.py](mesh_bot.py) has you covered.
 
 * [Getting Started](#getting-started)
 
@@ -102,7 +102,7 @@ Advanced check-in/check-out and asset tracking for people and equipment—ideal 
 - **Automatic Message Chunking**: Messages over 160 characters are automatically split to ensure reliable delivery across multiple hops.
 
 ## Getting Started
-This project is developed on Linux (specifically a Raspberry Pi) but should work on any platform where the [Meshtastic protobuf API](https://meshtastic.org/docs/software/python/cli/) modules are supported, and with any compatible [Meshtastic](https://meshtastic.org/docs/getting-started/) hardware, however it is **recomended to use the latest firmware code**. For low-powered devices [mPWRD-OS](https://github.com/SpudGunMan/mPWRD-OS) for running on luckfox hardware. If you need a local console consider the [firefly](https://github.com/pdxlocations/firefly) project. 
+This project is developed on Linux (specifically a Raspberry Pi) but should work on any platform where the [MeshCore](https://meshcore.io/) library is supported, and with any compatible [MeshCore](https://meshcore.io/) hardware, however it is **recomended to use the latest firmware code**. For low-powered devices [mPWRD-OS](https://github.com/SpudGunMan/mPWRD-OS) for running on luckfox hardware. If you need a local console consider the [firefly](https://github.com/pdxlocations/firefly) project. 
 
 🥔 Please use responsibly and follow local rulings for such equipment. This project captures packets, logs them, and handles over the air communications which can include PII such as GPS locations.
 
@@ -129,8 +129,8 @@ Games are DM only by default
 
 [modules/games/README.md](modules/games/README.md)
 
-### Firmware 2.6 DM Key, and 2.7 CLIENT_BASE Favorite Nodes
-Firmware 2.6 introduced [PKC](https://meshtastic.org/blog/introducing-new-public-key-cryptography-in-v2_5/), enabling secure private messaging by adding necessary keys to each node. To fully utilize this feature, you should add favorite nodes—such as BBS admins—to your node’s favorites list to ensure their keys are retained. A helper script is provided to simplify this process:
+### MeshCore Favorite Nodes
+MeshCore uses public key cryptography (PKC) for secure private messaging. To fully utilize this feature, you should add favorite nodes—such as BBS admins—to your node’s favorites list to ensure their keys are retained. A helper script is provided to simplify this process:
 - Run the helper script from the main program directory: `python3 script/addFav.py`
 - By default, this script adds nodes from `bbs_admin_list` and `bbslink_whitelist`
 - If using a virtual environment, run: `launch.sh addfav`
@@ -143,11 +143,6 @@ To configure favorite nodes, add their numbers to your config file:
 [general]
 favoriteNodeList = # list of favorite nodes numbers ex: 2813308004,4258675309 used by script/addFav.py
 ```
-
-### MQTT Notes
-There is no direct support for MQTT in the code, however, reports from Discord are that using [meshtasticd](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/) with no radio and attaching the bot to the software node, which is MQTT-linked, allows routing. Tested working fully Firmware:2.6.11 with [mosquitto](https://meshtastic.org/docs/software/integrations/mqtt/mosquitto/).
-
-~~There also seems to be a quicker way to enable MQTT by having your bot node with the enabled [serial](https://meshtastic.org/docs/configuration/module/serial/) module with echo enabled and MQTT uplink and downlink. These two~~ 
 
 # Recognition
 
@@ -185,4 +180,4 @@ For testing and feature ideas on Discord and GitHub, if its stable its thanks to
 ### Tools
 - **Node Backup Management**: [Node Slurper](https://github.com/SpudGunMan/node-slurper)
 
-Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software components are released under various licenses, see GitHub for details. No warranty is provided - use at your own risk.
+MeshCore is developed by the MeshCore project. See [meshcore.io](https://meshcore.io/) for details. No warranty is provided - use at your own risk.

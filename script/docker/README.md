@@ -1,6 +1,8 @@
 # How do I use this thing?
 This is not a full turnkey setup for Docker yet?
 
+> **Note:** The Docker setup below predates the MeshCore migration. The `meshtasticd` service runs the old Meshtastic daemon and is no longer used by the bot. Docker support for MeshCore is a work in progress.
+
 `docker pull ghcr.io/spudgunman/meshing-around:main`
 
 `docker network create meshing-around-network`

@@ -1,10 +1,10 @@
-# /etc/systemd/system/mesh_bot.service
+# /etc/systemd/system/meshing-around_bot.service
 # sudo systemctl daemon-reload
-# sudo systemctl enable mesh_bot.service
-# sudo systemctl start mesh_bot.service
+# sudo systemctl enable meshing-around_bot.service
+# sudo systemctl start meshing-around_bot.service
 
 [Unit]
-Description=MESH-BOT
+Description=meshing-around_bot
 After=network.target
 
 [Service]

@@ -75,7 +75,7 @@ Edit the `projectName` variable to match the handler function you want to test. 
 ## yolo_vision.py
 
 **Purpose:**  
-`yolo_vision.py` provides real-time object detection and movement tracking using a Raspberry Pi camera and YOLOv5. It is designed for integration with the Mesh Bot project, outputting alerts to both the console and an optional `alert.txt` file for further use (such as with Meshtastic).
+`yolo_vision.py` provides real-time object detection and movement tracking using a Raspberry Pi camera and YOLOv5. It is designed for integration with the Mesh Bot project, outputting alerts to both the console and an optional `alert.txt` file for further use (such as with MeshCore).
 
 **Features:**  
 - Ignores specified object classes (e.g., "bed", "chair") to reduce false positives.
@@ -100,7 +100,7 @@ Run this script to monitor the camera feed and generate alerts for detected and 
 ## icad_tone.py
 
 **Purpose:**  
-`icad_tone.py` is a utility script for detecting fire and EMS radio tones using the [icad_tone_detection](https://github.com/thegreatcodeholio/icad_tone_detection) library. It analyzes audio from a live stream, soundcard, or WAV file, identifies various tone types (such as two-tone, long tone, hi/low, pulsed, MDC, and DTMF), and writes detected alerts to `alert.txt` for integration with Mesh Bot or Meshtastic.
+`icad_tone.py` is a utility script for detecting fire and EMS radio tones using the [icad_tone_detection](https://github.com/thegreatcodeholio/icad_tone_detection) library. It analyzes audio from a live stream, soundcard, or WAV file, identifies various tone types (such as two-tone, long tone, hi/low, pulsed, MDC, and DTMF), and writes detected alerts to `alert.txt` for integration with Mesh Bot or MeshCore.
 
 **Usage:**  
 Run the script from the command line, specifying a WAV file for offline analysis or configuring it to listen to a stream or soundcard for real-time monitoring.
