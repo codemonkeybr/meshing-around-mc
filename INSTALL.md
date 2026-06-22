@@ -86,7 +86,7 @@ bash install.sh --nope
 ### What it does
 
 - Checks for existing installations and permissions.
-- Optionally moves the project to `/opt/meshing-around`.
+- Optionally moves the project to `/opt/meshing-around-mc`.
 - Installs Python and pip if missing (unless on embedded systems).
 - Adds the current user (or a dedicated `meshbot` user) to necessary groups for serial and Bluetooth access.
 - Copies and configures systemd service files for running the bot as a service.

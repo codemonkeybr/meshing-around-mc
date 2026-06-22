@@ -45,7 +45,7 @@ if [[ $NOPE -eq 1 ]]; then
     sudo groupdel meshbot || true
     sudo userdel meshbot || true
 
-    sudo rm -rf /opt/meshing-around/
+    sudo rm -rf /opt/meshing-around-mc/
 
     # If Ollama was installed and you want to remove it:
     if [[ -f /etc/systemd/system/ollama.service ]]; then
@@ -119,19 +119,19 @@ then
     sudo apt-get install curl
 fi
 
-# check if we are in /opt/meshing-around
-if [[ "$program_path" != "/opt/meshing-around" ]]; then
+# check if we are in /opt/meshing-around-mc
+if [[ "$program_path" != "/opt/meshing-around-mc" ]]; then
     echo "----------------------------------------------"
     echo "  Project Path Decision"
     echo "----------------------------------------------"
-    printf "\nIt is recommended to install Meshing Around in /opt/meshing-around if used as a service.\n"
-    printf "Do you want to move the project to /opt/meshing-around now? (y/n): "
+    printf "\nIt is recommended to install Meshing Around in /opt/meshing-around-mc if used as a service.\n"
+    printf "Do you want to move the project to /opt/meshing-around-mc now? (y/n): "
     read move
     if [[ $(echo "$move" | grep -i "^y") ]]; then
-        sudo mv "$program_path" /opt/meshing-around
-        cd /opt/meshing-around
-        sudo git config --global --add safe.directory /opt/meshing-around
-        printf "\nProject moved to /opt/meshing-around.\n"
+        sudo mv "$program_path" /opt/meshing-around-mc
+        cd /opt/meshing-around-mc
+        sudo git config --global --add safe.directory /opt/meshing-around-mc
+        printf "\nProject moved to /opt/meshing-around-mc.\n"
         printf "Please re-run the installer from the new location.\n"
         exit 0
     else
@@ -567,7 +567,7 @@ exit 0
 # sudo groupdel meshbot
 # sudo userdel meshbot
 
-# sudo rm -rf /opt/meshing-around/
+# sudo rm -rf /opt/meshing-around-mc/
 
 # If Ollama was installed and you want to remove it:
 # sudo systemctl stop ollama
