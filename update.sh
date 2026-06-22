@@ -9,7 +9,7 @@ echo
 
 # --- Service Management ---
 service_stopped=false
-for svc in meshing-around_bot.service pong_bot.service mesh_bot_reporting.service mesh_bot_w3.service; do
+for svc in meshing-around_bot.service pong_bot.service meshing-around_reporting.service mesh_bot_w3.service; do
     if systemctl is-active --quiet "$svc"; then
         echo ">> Stopping $svc ..."
         systemctl stop "$svc"
@@ -116,7 +116,7 @@ if [[ "$service_stopped" = true ]]; then
     echo "----------------------------------------------"
     echo "Restarting services..."
     echo "----------------------------------------------"
-    for svc in meshing-around_bot.service pong_bot.service mesh_bot_reporting.service mesh_bot_w3.service; do
+    for svc in meshing-around_bot.service pong_bot.service meshing-around_reporting.service mesh_bot_w3.service; do
         if systemctl list-unit-files | grep -q "^$svc"; then
             systemctl start "$svc"
             echo "$svc restarted."
