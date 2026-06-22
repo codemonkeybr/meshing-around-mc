@@ -334,6 +334,18 @@ interval =
 # Process run :00,:20,:40 try and vary the 20 minute offsets to avoid collision
 time =
 
+[advertiser]
+# Periodically send a mesh advert so nearby nodes discover the bot and can DM it
+enabled = False
+# flood = True sends through repeaters across the mesh; False = zero-hop (local only)
+flood = True
+# Send an advert immediately on bot startup
+advert_on_start = True
+# How often to send the advert, in minutes
+advert_interval = 60
+# Which radio interface to use (1 = first interface)
+advert_interface = 1
+
 [radioMon]
 # dx cluster `dx` command
 dxspotter_enabled = True

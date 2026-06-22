@@ -115,6 +115,16 @@ if 'scheduler' not in config:
     config['scheduler'] = {'enabled': 'False'}
     config.write(open(config_file, 'w'))
 
+if 'advertiser' not in config:
+    config['advertiser'] = {
+        'enabled': 'False',
+        'flood': 'True',
+        'advert_on_start': 'True',
+        'advert_interval': '60',
+        'advert_interface': '1',
+    }
+    config.write(open(config_file, 'w'))
+
 if 'emergencyHandler' not in config:
     config['emergencyHandler'] = {'enabled': 'False', 'alert_channel': '2', 'alert_interface': '1', 'email': ''}
     config.write(open(config_file, 'w'))
@@ -432,6 +442,13 @@ try:
     schedulerTime = config['scheduler'].get('time', '') # default empty
     schedulerValue = config['scheduler'].get('value', '') # default empty
     schedulerMotd = config['scheduler'].getboolean('schedulerMotd', False) # default False
+
+    # advertiser
+    advert_enabled = config['advertiser'].getboolean('enabled', False)
+    advert_flood = config['advertiser'].getboolean('flood', True)
+    advert_on_start = config['advertiser'].getboolean('advert_on_start', True)
+    advert_interval = config['advertiser'].getint('advert_interval', 60)
+    advert_interface = config['advertiser'].getint('advert_interface', 1)
 
     # radio monitoring
     radio_detection_enabled = config['radioMon'].getboolean('enabled', False)
