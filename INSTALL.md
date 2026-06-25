@@ -43,8 +43,77 @@ cp config.template config.ini
 
 ## Docker Installation
 
-See [script/docker/README.md](script/docker/README.md) for Docker-based setup instructions.  
-Docker is recommended for Windows or if you want an isolated environment.
+Docker is recommended for isolated deployments or when running on a server without a Python environment.
+
+### Prerequisites
+
+- Docker Engine (`docker --version`)
+- Docker Compose — either `docker compose` (plugin) or `docker-compose` (standalone); both work
+- For USB/serial radio: your user must be in the `docker` group:
+  ```sh
+  sudo usermod -aG docker $USER && newgrp docker
+  ```
+
+### Quick start (serial/USB radio)
+
+```sh
+cp config.template config.ini   # then edit config.ini as needed
+```
+
+Uncomment the `config.ini` volume line in `docker-compose.yml`:
+```yaml
+volumes:
+  - ./config.ini:/app/config.ini   # ← uncomment this
+```
+
+Then build and start:
+```sh
+docker compose up --build
+```
+
+### Interface modes
+
+Set via environment variables in `docker-compose.yml`:
+
+| Mode | Required env vars |
+|---|---|
+| Serial/USB (default) | `INTERFACE_TYPE=serial`, `SERIAL_PORT=/dev/ttyUSB0` |
+| TCP | `INTERFACE_TYPE=tcp`, `TCP_HOST=192.168.1.1:5052` |
+| BLE | `INTERFACE_TYPE=ble`, `BLE_MAC=AA:BB:CC:DD:EE:FF` |
+
+If your radio appears on `/dev/ttyACM0` instead of `/dev/ttyUSB0`, update both the `SERIAL_PORT` env var and the `devices:` line in `docker-compose.yml`.
+
+### Customising config.ini
+
+1. `cp config.template config.ini`
+2. Edit `config.ini` on the host
+3. Uncomment `- ./config.ini:/app/config.ini` in `docker-compose.yml`
+4. Restart: `docker compose down && docker compose up`
+
+Changes to `config.ini` take effect on the next container start (no rebuild needed).
+
+### Persistent data
+
+`data/` and `logs/` are bind-mounted automatically and survive container restarts and rebuilds.
+
+### Useful commands
+
+```sh
+docker compose up --build          # build image and start
+docker compose up                  # start without rebuilding
+docker compose down                # stop and remove container
+docker compose logs -f             # stream logs
+docker compose exec meshbot bash   # open a shell inside the container
+```
+
+### Ollama (LLM) — untested
+
+`docker-compose.yml` includes a commented-out `ollama` service. To enable:
+
+1. Uncomment the `ollama` service block, `networks`, and `volumes` at the bottom of `docker-compose.yml`
+2. Uncomment `- OLLAMA_HOST=http://ollama:11434` in the `meshbot` environment section
+3. Also set `ollama = true` and `ollamaHostName = http://ollama:11434` in `config.ini` under `[general]`
+4. After first start, pull a model: `docker exec -it <ollama-container> ollama pull gemma3:270m`
 
 ---
 
