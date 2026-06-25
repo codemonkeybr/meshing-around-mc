@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.git/
+.github/
+
+venv/
+.venv/
+
+# Runtime state — generated at run time, not baked into the image
+config.ini
+logs/
+data/
+meshcore_bot.db
+*.db
+*.pickle
+*.log

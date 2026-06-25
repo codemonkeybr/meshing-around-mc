@@ -1,23 +1,22 @@
-# How do I use this thing?
-This is not a full turnkey setup for Docker yet?
+# Docker Setup
 
-> **Note:** The Docker setup below predates the MeshCore migration. The `meshtasticd` service runs the old Meshtastic daemon and is no longer used by the bot. Docker support for MeshCore is a work in progress.
+See [INSTALL.md — Docker Installation](../../INSTALL.md#docker-installation) for full setup instructions.
 
-`docker pull ghcr.io/spudgunman/meshing-around:main`
+## Files
 
-`docker network create meshing-around-network`
+| File | Purpose |
+|---|---|
+| `../../Dockerfile` | Multi-stage build (python:3.12-slim); compiles C extensions in builder stage, keeps final image lean |
+| `../../docker-compose.yml` | Defines the `meshbot` service with USB device passthrough, volume mounts, and optional ollama |
+| `entrypoint.sh` | Bootstraps `config.ini` from template and applies interface settings from env vars at startup |
+| `../../.dockerignore` | Excludes runtime artifacts (logs, data, config.ini, __pycache__) from the image |
 
-`docker compose run meshtasticd`
+## Entrypoint env vars
 
-`docker compose run meshing-around`
-
-`docker compose run debug-console`
-
-`docker compose run ollama`
-
-`docker run -d -p 3000:8080 -e OLLAMA_BASE_URL=http://127.0.0.1:11434 -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:main`
-
-
-### Other Stuff
-A cool tool to use with RAG creation with open-webui
-- https://github.com/microsoft/markitdown
+| Variable | Default | Description |
+|---|---|---|
+| `INTERFACE_TYPE` | `serial` | Radio interface: `serial`, `tcp`, or `ble` |
+| `SERIAL_PORT` | `/dev/ttyUSB0` | Serial device path (serial mode only) |
+| `TCP_HOST` | — | `host:port` for TCP mode (required when `INTERFACE_TYPE=tcp`) |
+| `BLE_MAC` | — | MAC address for BLE mode (required when `INTERFACE_TYPE=ble`) |
+| `OLLAMA_HOST` | — | Ollama URL e.g. `http://ollama:11434`; enables LLM when set |

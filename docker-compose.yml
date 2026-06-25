@@ -1,0 +1,64 @@
+services:
+  meshbot:
+    build: .
+    restart: unless-stopped
+
+    # ── Interface selection ───────────────────────────────────────────────────
+    # Set INTERFACE_TYPE to: serial (default), tcp, or ble
+    environment:
+      # Serial (USB) — default
+      - INTERFACE_TYPE=serial
+      - SERIAL_PORT=/dev/ttyUSB0
+
+      # TCP — uncomment and comment out serial block above
+      # - INTERFACE_TYPE=tcp
+      # - TCP_HOST=192.168.1.1:5052
+
+      # BLE — uncomment and comment out serial block above
+      # - INTERFACE_TYPE=ble
+      # - BLE_MAC=AA:BB:CC:DD:EE:FF
+
+      # Ollama (untested) — uncomment to enable LLM support
+      # Requires the ollama service below to also be uncommented
+      # - OLLAMA_HOST=http://ollama:11434
+
+    # ── USB / serial device passthrough ──────────────────────────────────────
+    # Expose the host serial device inside the container.
+    # Change to /dev/ttyACM0 if your radio appears there instead.
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+      # - "/dev/ttyACM0:/dev/ttyACM0"
+
+    # ── Persistent storage ───────────────────────────────────────────────────
+    # data/: BBS database, pickle files, etc.
+    # logs/: bot log files
+    # config.ini: to customise, run `cp config.template config.ini` on the host
+    #             first, edit it, then uncomment the line below and restart.
+    volumes:
+      - ./config.ini:/app/config.ini
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    # networks:
+    #   - meshbot-net
+
+  # ── Ollama (LLM) — untested, uncomment to enable ─────────────────────────
+  # Also uncomment the networks and volumes sections at the bottom.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   networks:
+  #     - meshbot-net
+
+# networks:
+#   meshbot-net:
+
+# volumes:
+#   ollama-data:
