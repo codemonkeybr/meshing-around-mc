@@ -1921,16 +1921,26 @@ _sender_paths: dict = {}
 
 
 def _is_duplicate_dm(pubkey_prefix: str, sender_timestamp) -> bool:
-    """Return True if we already processed this exact DM (same sender + timestamp)."""
+    """Return True if we already processed this exact DM (same sender + timestamp).
+
+    Both RX_LOG_DATA (_process_raw_dm) and CONTACT_MSG_RECV (on_contact_msg) call this.
+    RX_LOG_DATA always produces an int timestamp; CONTACT_MSG_RECV may produce None when
+    the field is absent from the event payload. Checking and registering both the exact
+    key and the None-variant ensures the two paths recognise each other's entries regardless
+    of which fires first or what timestamp format the event carries.
+    """
     now = time.time()
     # Prune old entries
     expired = [k for k, t in _seen_dm_keys.items() if now - t > _SEEN_DM_TTL]
     for k in expired:
         del _seen_dm_keys[k]
-    key = (pubkey_prefix, sender_timestamp)
-    if key in _seen_dm_keys:
+    key      = (pubkey_prefix, sender_timestamp)
+    key_none = (pubkey_prefix, None)
+    if key in _seen_dm_keys or key_none in _seen_dm_keys:
         return True
     _seen_dm_keys[key] = now
+    if sender_timestamp is not None:
+        _seen_dm_keys[key_none] = now
     return False
 
 
