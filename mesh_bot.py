@@ -2212,7 +2212,8 @@ def _ingest_contact(c: dict):
     short = name[:8] if len(name) > 8 else name
     lat = c.get('adv_lat')
     lon = c.get('adv_lon')
-    update_contact(prefix, name_long=name, name_short=short, pubkey=pubkey, lat=lat, lon=lon)
+    node_type = c.get('type', 0)
+    update_contact(prefix, name_long=name, name_short=short, pubkey=pubkey, lat=lat, lon=lon, node_type=node_type)
     logger.debug(f"System: Contact cached: {prefix} → {name}")
 
 

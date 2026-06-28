@@ -92,21 +92,24 @@ def parse_log_file(file_path):
         'bbs_messages': 0,
         'messages_waiting': 0,
         'total_messages': 0,
-        'gps_coordinates': defaultdict(list),
+        'gps_coordinates': {},
         'command_timestamps': [],
         'message_timestamps': [],
-        'firmware1_version': "N/A",
-        'firmware2_version': "N/A",
-        'node1_uptime': "N/A",
-        'node2_uptime': "N/A",
         'node1_name': "N/A",
         'node2_name': "N/A",
         'node1_ID': "N/A",
         'node2_ID': "N/A",
+        'node1_connection': "N/A",
+        'node2_connection': "N/A",
+        'node1_pubkey': "N/A",
+        'node2_pubkey': "N/A",
         'shameList': []
     }
 
+    ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
+
     for line in lines:
+        line = ANSI_ESCAPE.sub('', line)
         timestamp_match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+', line)
         if timestamp_match:
             timestamp = datetime.strptime(timestamp_match.group(1), '%Y-%m-%d %H:%M:%S')
@@ -193,45 +196,45 @@ def parse_log_file(file_path):
             log_data['bbs_messages'] = bbs_messages
             log_data['messages_waiting'] = messages_waiting
 
-        gps_match = re.search(r'location data for (\d+) is ([-\d.]+),([-\d.]+)', line)
-        if gps_match:
-            node_id = None
-            node_id, lat, lon = gps_match.groups()
-            log_data['gps_coordinates'][node_id].append((float(lat), float(lon)))
+        pass  # GPS coordinates loaded from contacts.json after log parse
         
-        # get telemetry data
-        if '| Telemetry:' in line:
-            telemetry_match = re.search(r'Telemetry:(\d+) numPacketsRx:(\d+) numPacketsRxErr:(\d+) numPacketsTx:(\d+) numPacketsTxErr:(\d+) ChUtil%:(\d+\.\d+) AirTx%:(\d+\.\d+) totalNodes:(\d+) Online:(\d+) Uptime:(\d+d) Volt:(\d+\.\d+) Firmware:(\d+\.\d+\.\d+\.\w+)', line)
-            if telemetry_match:
-                interface_number, numPacketsRx, numPacketsRxErr, numPacketsTx, numPacketsTxErr, ChUtil, AirTx, totalNodes, online, uptime, volt, firmware_version = telemetry_match.groups()
-                data = f"Tx: {numPacketsTx} Rx: {numPacketsRx} Uptime: {uptime} Volt: {volt} numPacketsRxErr: {numPacketsRxErr} numPacketsTxErr: {numPacketsTxErr} ChUtil: {ChUtil} AirTx: {AirTx} totalNodes: {totalNodes} Online: {online}"
-                if interface_number == '1':
-                    log_data['firmware1_version'] = firmware_version
-                    log_data['node1_uptime'] = data
-                    log_data['nodeCount1'] = totalNodes
-                    log_data['nodeCountOnline1'] = online
-                    log_data['tx1'] = numPacketsTx
-                    log_data['rx1'] = numPacketsRx
-                elif interface_number == '2':
-                    log_data['firmware2_version'] = firmware_version
-                    log_data['node2_uptime'] = data
-                    log_data['nodeCount2'] = totalNodes
-                    log_data['nodeCountOnline2'] = online
-                    log_data['tx2'] = numPacketsTx
-                    log_data['rx2'] = numPacketsRx
+        # MeshCore interface connection type: "System: Interface1 connected via serial"
+        iface_conn_match = re.search(r'System: Interface(\d+) connected via (.+)', line)
+        if iface_conn_match:
+            iface_num = iface_conn_match.group(1)
+            conn_type = iface_conn_match.group(2).strip()
+            if iface_num == '1':
+                log_data['node1_connection'] = conn_type
+            elif iface_num == '2':
+                log_data['node2_connection'] = conn_type
 
-        # get name and nodeID for devices
+        # MeshCore interface identity: "System: Interface1 self: NodeName (pubkeyprefix)"
+        iface_self_match = re.search(r'System: Interface(\d+) self: (.+?) \(([0-9a-fA-F]+)\)', line)
+        if iface_self_match:
+            iface_num = iface_self_match.group(1)
+            iface_name = iface_self_match.group(2).strip()
+            pubkey = iface_self_match.group(3)
+            if iface_num == '1':
+                log_data['node1_name'] = iface_name
+                log_data['node1_pubkey'] = pubkey
+            elif iface_num == '2':
+                log_data['node2_name'] = iface_name
+                log_data['node2_pubkey'] = pubkey
+
+        # get name and nodeID for devices (Autoresponder startup line)
         if 'Autoresponder Started for Device' in line:
-            device_match = re.search(r'Autoresponder Started for Device(\d+)\s+([^\s,]+).*?NodeID: (\d+)', line)
+            device_match = re.search(r'Autoresponder Started for Device(\d+)\s+(.+?)\. NodeID: (\d+)', line)
             if device_match:
                 device_id = device_match.group(1)
-                device_name = device_match.group(2)
+                device_name = device_match.group(2).split(',')[0].strip()
                 node_id = device_match.group(3)
                 if device_id == '1':
-                    log_data['node1_name'] = device_name
+                    if log_data['node1_name'] == "N/A":
+                        log_data['node1_name'] = device_name
                     log_data['node1_ID'] = node_id
                 elif device_id == '2':
-                    log_data['node2_name'] = device_name
+                    if log_data['node2_name'] == "N/A":
+                        log_data['node2_name'] = device_name
                     log_data['node2_ID'] = node_id
 
     log_data['unique_users'] = list(log_data['unique_users'])
@@ -246,32 +249,33 @@ def get_system_info():
             return "N/A"
         
     # Capture some system information from log_data
-    firmware1_version = log_data['firmware1_version']
-    firmware2_version = log_data['firmware2_version']
-    node1_uptime = log_data['node1_uptime']
-    node2_uptime = log_data['node2_uptime']
     node1_name = log_data['node1_name']
     node2_name = log_data['node2_name']
     node1_ID = log_data['node1_ID']
     node2_ID = log_data['node2_ID']
+    node1_connection = log_data['node1_connection']
+    node2_connection = log_data['node2_connection']
+    node1_pubkey = log_data['node1_pubkey']
+    node2_pubkey = log_data['node2_pubkey']
 
-    print(f"Node1: {node1_name} {node1_ID} {firmware1_version}")
-    print(f"Node2: {node2_name} {node2_ID} {firmware2_version}")
+    print(f"Node1: {node1_name} {node1_ID} ({node1_pubkey}) via {node1_connection}")
+    print(f"Node2: {node2_name} {node2_ID} ({node2_pubkey}) via {node2_connection}")
 
-    # get Meshtastic CLI version on web
+    cli_web = "N/A"
+    cli_local = "N/A"
+    # get meshcore library version from PyPI
     try:
-        url = "https://pypi.org/pypi/meshtastic/json"
+        url = "https://pypi.org/pypi/meshcore/json"
         data = requests.get(url, timeout=5).json()
         pypi_version = data["info"]["version"]
         cli_web = f"v{pypi_version}"
     except Exception:
         pass
-    # get Meshtastic CLI version on local
+    # get locally installed meshcore version
     try:
-        if "importlib.metadata" in sys.modules:
-            cli_local = version("meshtastic")
-    except:
-        pass # Python 3.7 and below, meh.. 
+        cli_local = version("meshcore")
+    except Exception:
+        pass
 
 
     if platform.system() == "Linux":
@@ -293,14 +297,14 @@ def get_system_info():
             'memory_available': "N/A",
             'disk_total': "N/A",
             'disk_free': "N/A",
-            'interface1_version': "N/A",
-            'interface2_version': "N/A",
-            'node1_uptime': "N/A",
-            'node2_uptime': "N/A",
             'node1_name': "N/A",
             'node2_name': "N/A",
             'node1_ID': "N/A",
             'node2_ID': "N/A",
+            'node1_connection': "N/A",
+            'node2_connection': "N/A",
+            'node1_pubkey': "N/A",
+            'node2_pubkey': "N/A",
             'cli_web': "N/A",
             'cli_local': "N/A"
         }
@@ -311,14 +315,14 @@ def get_system_info():
         'memory_available': f"{memory_available} MB" if memory_available != "N/A" else "N/A",
         'disk_total': disk_total,
         'disk_free': disk_free,
-        'interface1_version': firmware1_version,
-        'interface2_version': firmware2_version,
-        'node1_uptime': node1_uptime,
-        'node2_uptime': node2_uptime,
         'node1_name': node1_name,
         'node2_name': node2_name,
         'node1_ID': node1_ID,
         'node2_ID': node2_ID,
+        'node1_connection': node1_connection,
+        'node2_connection': node2_connection,
+        'node1_pubkey': node1_pubkey,
+        'node2_pubkey': node2_pubkey,
         'cli_web': cli_web,
         'cli_local': cli_local
     }
@@ -963,28 +967,36 @@ options: {
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
-        
+
+            var nodeTypeColors = {0: '#888888', 1: '#3388ff', 2: '#e05c00', 3: '#9933cc', 4: '#22aa44'};
+            var nodeTypeLabels = {0: 'Unknown', 1: 'Client', 2: 'Repeater', 3: 'Room Server', 4: 'Sensor'};
+            var MIN_RADIUS = 6, MAX_RADIUS = 16;
+
             var gpsCoordinates = ${gps_coordinates};
+            var maxMsgs = Object.values(gpsCoordinates).reduce(function(m, e) { return Math.max(m, e.msg_count || 0); }, 1);
             var bounds = [];
-            var defaultCoordinate = [0, 0]; // Set your default coordinate here
-        
-            for (var nodeId in gpsCoordinates) {
-                if (gpsCoordinates[nodeId] && gpsCoordinates[nodeId][0]) {
-                    var coords = gpsCoordinates[nodeId][0];
-                    L.marker(coords).addTo(map)
-                        .bindPopup("Node ID: " + nodeId);
-                    bounds.push(coords);
-                } else {
-                    // Optionally, handle the case where coordinates are missing
-                    // bounds.push(defaultCoordinate);
-                }
+
+            for (var name in gpsCoordinates) {
+                var entry = gpsCoordinates[name];
+                var coords = [entry.lat, entry.lon];
+                var ntype = entry.node_type || 0;
+                var color = nodeTypeColors[ntype] || '#888888';
+                var count = entry.msg_count || 0;
+                var radius = (ntype === 1)
+                    ? MIN_RADIUS + (count / maxMsgs) * (MAX_RADIUS - MIN_RADIUS)
+                    : MIN_RADIUS;
+                var fillColor = (ntype === 1 && count === 0) ? '#7ab8ff' : color;
+                L.circleMarker(coords, {
+                    radius: radius, color: '#fff', weight: 1.5,
+                    fillColor: fillColor, fillOpacity: 0.9
+                }).addTo(map).bindPopup('<b>' + name + '</b><br>' + nodeTypeLabels[ntype] + (ntype === 1 ? '<br>Messages: ' + count : ''));
+                bounds.push(coords);
             }
-        
+
             if (bounds.length > 0) {
-                map.fitBounds(bounds);
+                map.fitBounds(bounds, {padding: [20, 20]});
             } else {
-                // Optionally, set the view to the default coordinate if no valid bounds are found
-                map.setView(defaultCoordinate, 2);
+                map.setView([0, 0], 2);
             }
         }
 
@@ -1087,18 +1099,46 @@ def generate_network_map_html(log_data):
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
 
+            var nodeTypeColors = {0: '#888888', 1: '#3388ff', 2: '#e05c00', 3: '#9933cc', 4: '#22aa44'};
+            var nodeTypeLabels = {0: 'Unknown', 1: 'Client', 2: 'Repeater', 3: 'Room Server', 4: 'Sensor'};
+            var MIN_RADIUS = 6, MAX_RADIUS = 16;
             var gpsCoordinates = ${gps_coordinates};
-            for (var nodeId in gpsCoordinates) {
-                var coords = gpsCoordinates[nodeId][0];
-                L.marker(coords).addTo(map)
-                    .bindPopup("Node ID: " + nodeId);
+            var maxMsgs = Object.values(gpsCoordinates).reduce(function(m, e) { return Math.max(m, e.msg_count || 0); }, 1);
+            var bounds = [];
+
+            for (var name in gpsCoordinates) {
+                var entry = gpsCoordinates[name];
+                var coords = [entry.lat, entry.lon];
+                var ntype = entry.node_type || 0;
+                var color = nodeTypeColors[ntype] || '#888888';
+                var count = entry.msg_count || 0;
+                var radius = (ntype === 1)
+                    ? MIN_RADIUS + (count / maxMsgs) * (MAX_RADIUS - MIN_RADIUS)
+                    : MIN_RADIUS;
+                var fillColor = (ntype === 1 && count === 0) ? '#7ab8ff' : color;
+                L.circleMarker(coords, {
+                    radius: radius, color: '#fff', weight: 1.5,
+                    fillColor: fillColor, fillOpacity: 0.9
+                }).addTo(map).bindPopup('<b>' + name + '</b><br>' + nodeTypeLabels[ntype] + (ntype === 1 ? '<br>Messages: ' + count : ''));
+                bounds.push(coords);
             }
 
-            var bounds = [];
-            for (var nodeId in gpsCoordinates) {
-                bounds.push(gpsCoordinates[nodeId][0]);
-            }
-            map.fitBounds(bounds);
+            if (bounds.length > 0) { map.fitBounds(bounds, {padding: [20, 20]}); }
+
+            var legend = L.control({position: 'bottomright'});
+            legend.onAdd = function() {
+                var div = L.DomUtil.create('div', '');
+                div.style.cssText = 'background:white;padding:8px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px;line-height:22px;';
+                div.innerHTML = '<b>Node Types</b><br>';
+                div.innerHTML += '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#3388ff;margin-right:6px;vertical-align:middle;"></span>Client (interacted)<br>';
+                div.innerHTML += '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#7ab8ff;margin-right:6px;vertical-align:middle;"></span>Client (heard only)<br>';
+                [2, 3, 4, 0].forEach(function(t) {
+                    div.innerHTML += '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + nodeTypeColors[t] + ';margin-right:6px;vertical-align:middle;"></span>' + nodeTypeLabels[t] + '<br>';
+                });
+                div.innerHTML += '<br><i style="font-size:11px">Client dot size = message count</i>';
+                return div;
+            };
+            legend.addTo(map);
         </script>
     </body>
     </html>
@@ -1132,14 +1172,14 @@ def generate_sys_hosts_html(system_info):
             <tr><td>Available Memory</td><td>${memory_available}</td></tr>
             <tr><td>Total Disk Space</td><td>${disk_total}</td></tr>
             <tr><td>Free Disk Space</td><td>${disk_free}</td></tr>
-            <tr><th>Meshtastic Metric</th><th>Value</th></tr>
-            <tr><td>API Version/Latest</td><td>${cli_local} / ${cli_web}</td></tr>
-            <tr><td>Int1 Name ID</td><td>${node1_name} (${node1_ID})</td></tr>
-            <tr><td>Int1 Stat</td><td>${node1_uptime}</td></tr>
-            <tr><td>Int1 FW Version</td><td>${interface1_version}</td></tr>
-            <tr><td>Int2 Name ID</td><td>${node2_name} (${node2_ID})</td></tr>
-            <tr><td>Int2 Stat</td><td>${node2_uptime}</td></tr>
-            <tr><td>Int2 FW Version</td><td>${interface2_version}</td></tr>
+            <tr><th>MeshCore Metric</th><th>Value</th></tr>
+            <tr><td>MeshCore Lib Version/Latest</td><td>${cli_local} / ${cli_web}</td></tr>
+            <tr><td>Int1 Name (NodeID)</td><td>${node1_name} (${node1_ID})</td></tr>
+            <tr><td>Int1 Pubkey Prefix</td><td>${node1_pubkey}</td></tr>
+            <tr><td>Int1 Connection</td><td>${node1_connection}</td></tr>
+            <tr><td>Int2 Name (NodeID)</td><td>${node2_name} (${node2_ID})</td></tr>
+            <tr><td>Int2 Pubkey Prefix</td><td>${node2_pubkey}</td></tr>
+            <tr><td>Int2 Connection</td><td>${node2_connection}</td></tr>
         </table>
     </body>
     </html>
@@ -1196,7 +1236,7 @@ def generate_database_html(database_info):
     </head>
     <body>
         <h1>Database Information</h1>
-        <p>Conection ${database}. I cant see this text on dark mode</p>
+        <p>Connection ${database}</p>
         <table>
             <tr><th>config.ini Settings</th><th>Value</th></tr>
             <tr><td>Admin List</td><td>${adminList}</td></tr>
@@ -1245,6 +1285,40 @@ def main():
         log_path = os.path.join(file_path, log_file)
 
     log_data = parse_log_file(log_path)
+
+    # Load message counts from leaderboard.pkl
+    msg_counts = {}
+    leaderboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'leaderboard.pkl')
+    if os.path.exists(leaderboard_path):
+        try:
+            with open(leaderboard_path, 'rb') as f:
+                lb = pickle.load(f)
+                msg_counts = lb.get('nodeMessageCounts', {})
+        except Exception as e:
+            print(f"Warning: could not load leaderboard.pkl: {e}")
+
+    # Load contact positions from persisted contacts.json (written by the bot's saveAllData)
+    contacts_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'contacts.json')
+    if os.path.exists(contacts_path):
+        try:
+            with open(contacts_path) as f:
+                for entry in json.load(f):
+                    name = entry.get('name', entry.get('pubkey_prefix', '?'))
+                    prefix = entry.get('pubkey_prefix', '')
+                    lat, lon = entry.get('lat'), entry.get('lon')
+                    node_type = entry.get('node_type', 0)
+                    if lat is not None and lon is not None:
+                        log_data['gps_coordinates'][name] = {
+                            'lat': lat, 'lon': lon,
+                            'node_type': node_type,
+                            'msg_count': msg_counts.get(prefix, 0)
+                        }
+            print(f"Loaded {len(log_data['gps_coordinates'])} contact position(s) from contacts.json")
+        except Exception as e:
+            print(f"Warning: could not load contacts.json: {e}")
+    else:
+        print("contacts.json not found — map will be empty (bot needs to run first)")
+
     system_info = get_system_info()
     shame_info = get_wall_of_shame()
     database_info = get_database_info()

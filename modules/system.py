@@ -6,6 +6,7 @@ import time
 import asyncio
 import random
 import base64
+import json
 # not ideal but needed?
 import contextlib # for suppressing output on watchdog
 import io # for suppressing output on watchdog
@@ -353,7 +354,7 @@ def get_interface(nodeInt=1):
     """Return the live MeshCore interface object for the given slot."""
     return globals().get(f'interface{nodeInt}')
 
-def update_contact(pubkey_prefix, name_long="", name_short="", pubkey="", snr=0, lat=None, lon=None):
+def update_contact(pubkey_prefix, name_long="", name_short="", pubkey="", snr=0, lat=None, lon=None, node_type=None):
     """Upsert a contact in the in-memory cache."""
     existing = _contacts.get(pubkey_prefix, {})
     _contacts[pubkey_prefix] = {
@@ -364,6 +365,7 @@ def update_contact(pubkey_prefix, name_long="", name_short="", pubkey="", snr=0,
         'last_seen': time.time(),
         'lat': lat if lat is not None else existing.get('lat'),
         'lon': lon if lon is not None else existing.get('lon'),
+        'node_type': node_type if node_type is not None else existing.get('node_type', 0),
     }
 
 async def _connect_interface(i):
@@ -2204,6 +2206,21 @@ async def watchdog():
             load_bbsdm()
             load_bbsdb()
 
+def save_contacts():
+    contacts_path = 'data/contacts.json'
+    try:
+        entries = [
+            {'name': info.get('name_long', prefix), 'pubkey_prefix': prefix,
+             'lat': info['lat'], 'lon': info['lon'], 'node_type': info.get('node_type', 0)}
+            for prefix, info in _contacts.items()
+            if info.get('lat') is not None and info.get('lon') is not None
+            and not (info['lat'] == 0.0 and info['lon'] == 0.0)
+        ]
+        with open(contacts_path, 'w') as f:
+            json.dump(entries, f)
+    except Exception as e:
+        logger.error(f"Persistence: contacts save error: {e}")
+
 def saveAllData():
     try:
         # Save BBS data if enabled
@@ -2220,6 +2237,9 @@ def saveAllData():
         # Save ban list
         save_bbsBanList()
         logger.debug("Persistence: Ban list saved")
+
+        # Save contacts with position data for reporting
+        save_contacts()
 
         #logger.info("Persistence: Save completed")
     except Exception as e:
