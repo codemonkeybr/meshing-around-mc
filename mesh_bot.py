@@ -11,7 +11,7 @@ from datetime import datetime
 from modules.log import logger, CustomFormatter, msgLogger, getPrettyTime
 import modules.settings as my_settings
 from modules.system import *
-from modules.system import _contacts, get_bot_keys
+from modules.system import _contacts, get_bot_keys, _resolve_ack
 
 # list of commands to remove from the default list for DM only
 restrictedCommands = ["blackjack", "videopoker", "dopewars", "lemonstand", "golfsim", "mastermind", "hangman", "hamtest", "tictactoe", "tic-tac-toe", "quiz", "q:", "survey", "s:", "battleship"]
@@ -1923,24 +1923,22 @@ _sender_paths: dict = {}
 def _is_duplicate_dm(pubkey_prefix: str, sender_timestamp) -> bool:
     """Return True if we already processed this exact DM (same sender + timestamp).
 
-    Both RX_LOG_DATA (_process_raw_dm) and CONTACT_MSG_RECV (on_contact_msg) call this.
-    RX_LOG_DATA always produces an int timestamp; CONTACT_MSG_RECV may produce None when
-    the field is absent from the event payload. Checking and registering both the exact
-    key and the None-variant ensures the two paths recognise each other's entries regardless
-    of which fires first or what timestamp format the event carries.
+    Both CONTACT_MSG_RECV and the get_msg drain provide a real sender_timestamp,
+    so dedup is keyed on the exact (sender, timestamp) pair.  The (sender, None)
+    fallback is only checked when the incoming event has no timestamp, covering
+    the rare case where one delivery path omits the field.
     """
     now = time.time()
     # Prune old entries
     expired = [k for k, t in _seen_dm_keys.items() if now - t > _SEEN_DM_TTL]
     for k in expired:
         del _seen_dm_keys[k]
-    key      = (pubkey_prefix, sender_timestamp)
-    key_none = (pubkey_prefix, None)
-    if key in _seen_dm_keys or key_none in _seen_dm_keys:
+    key = (pubkey_prefix, sender_timestamp)
+    if key in _seen_dm_keys:
+        return True
+    if sender_timestamp is None and (pubkey_prefix, None) in _seen_dm_keys:
         return True
     _seen_dm_keys[key] = now
-    if sender_timestamp is not None:
-        _seen_dm_keys[key_none] = now
     return False
 
 
@@ -2394,8 +2392,26 @@ def _make_rx_handler(device_id: int):
             logger.debug(f"System: RX {pkt_type} via {route} hops:{hops} SNR:{snr} RSSI:{rssi} len:{len(raw)}")
             if pkt_id == 0x02:  # TEXT_MESSAGE — try to decrypt as DM
                 await _process_raw_dm(raw, hops, snr, rssi, device_id)
+            elif pkt_id == 0x03 and len(raw) >= 4:  # RF ACK — last 4 bytes are the ACK code
+                _resolve_ack(raw[-4:].hex())
         except Exception:
             logger.debug(f"System: RX_LOG_DATA (parse error) hex={raw_hex[:16]}")
+    return handler
+
+
+def _make_drain_handler(mc):
+    """Return a MESSAGES_WAITING handler that drains the radio's message queue."""
+    from meshcore import EventType as ET
+    async def handler(event):
+        logger.debug("System: MESSAGES_WAITING received — draining queue")
+        while True:
+            try:
+                result = await mc.commands.get_msg(timeout=2.0)
+            except Exception:
+                break
+            if result.type in (ET.NO_MORE_MSGS, ET.ERROR):
+                break
+            await asyncio.sleep(0.05)
     return handler
 
 
@@ -2410,8 +2426,9 @@ async def start_rx():
             mc.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_msg)
             mc.subscribe(EventType.CONTACTS, on_contacts)
             mc.subscribe(EventType.NEW_CONTACT, on_new_contact)
-            mc.subscribe(EventType.MESSAGES_WAITING, lambda e: logger.debug("System: MESSAGES_WAITING received"))
             mc.subscribe(EventType.RX_LOG_DATA, _make_rx_handler(i))
+            mc.subscribe(EventType.ACK, _sys.on_ack_event)
+            mc.subscribe(EventType.MESSAGES_WAITING, _make_drain_handler(mc))
             logger.debug(f"System: Subscribed to events on Interface{i}")
             # Refresh contacts so names are populated before handling any messages
             try:
