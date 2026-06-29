@@ -11,7 +11,7 @@ from datetime import datetime
 from modules.log import logger, CustomFormatter, msgLogger, getPrettyTime
 import modules.settings as my_settings
 from modules.system import *
-from modules.system import _contacts, get_bot_keys
+from modules.system import _contacts, get_bot_keys, _resolve_ack
 
 # list of commands to remove from the default list for DM only
 restrictedCommands = ["blackjack", "videopoker", "dopewars", "lemonstand", "golfsim", "mastermind", "hangman", "hamtest", "tictactoe", "tic-tac-toe", "quiz", "q:", "survey", "s:", "battleship"]
@@ -2395,7 +2395,7 @@ def _make_rx_handler(device_id: int):
             if pkt_id == 0x02:  # TEXT_MESSAGE — try to decrypt as DM
                 await _process_raw_dm(raw, hops, snr, rssi, device_id)
             elif pkt_id == 0x03 and len(raw) >= 4:  # RF ACK — last 4 bytes are the ACK code
-                _sys._resolve_ack(raw[-4:].hex())
+                _resolve_ack(raw[-4:].hex())
         except Exception:
             logger.debug(f"System: RX_LOG_DATA (parse error) hex={raw_hex[:16]}")
     return handler
