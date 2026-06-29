@@ -2394,6 +2394,8 @@ def _make_rx_handler(device_id: int):
             logger.debug(f"System: RX {pkt_type} via {route} hops:{hops} SNR:{snr} RSSI:{rssi} len:{len(raw)}")
             if pkt_id == 0x02:  # TEXT_MESSAGE — try to decrypt as DM
                 await _process_raw_dm(raw, hops, snr, rssi, device_id)
+            elif pkt_id == 0x03 and len(raw) >= 4:  # RF ACK — last 4 bytes are the ACK code
+                _sys._resolve_ack(raw[-4:].hex())
         except Exception:
             logger.debug(f"System: RX_LOG_DATA (parse error) hex={raw_hex[:16]}")
     return handler

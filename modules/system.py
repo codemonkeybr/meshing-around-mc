@@ -721,17 +721,28 @@ def messageChunker(message):
 _ack_events: dict = {}
 
 
+def _resolve_ack(code_hex: str) -> None:
+    """Unblock any _send_dm waiting on this ACK code.
+
+    Called from both the host-level EventType.ACK subscription and from
+    RF ACK packets extracted in _make_rx_handler (RX_LOG_DATA path).
+    The radio firmware does not always push a host-level ACK even when the
+    destination sends an RF ACK, so both paths are needed.
+    """
+    if not code_hex:
+        return
+    ev = _ack_events.get(code_hex)
+    if ev is not None:
+        logger.debug(f"System: ACK resolved code={code_hex[:8]}...")
+        ev.set()
+
+
 async def on_ack_event(event) -> None:
-    """Handle EventType.ACK — unblocks any _send_dm waiting on this code."""
+    """Handle host-level EventType.ACK (0x82 push from radio firmware)."""
     code = event.payload.get('code', '')
     if isinstance(code, bytes):
         code = code.hex()
-    if not code:
-        return
-    logger.debug(f"System: ACK received code={code[:8]}...")
-    ev = _ack_events.get(code)
-    if ev is not None:
-        ev.set()
+    _resolve_ack(code)
 
 
 async def _send_dm(interface, dst: str, text: str) -> bool:
