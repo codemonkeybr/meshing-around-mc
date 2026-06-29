@@ -2401,6 +2401,22 @@ def _make_rx_handler(device_id: int):
     return handler
 
 
+def _make_drain_handler(mc):
+    """Return a MESSAGES_WAITING handler that drains the radio's message queue."""
+    from meshcore import EventType as ET
+    async def handler(event):
+        logger.debug("System: MESSAGES_WAITING received — draining queue")
+        while True:
+            try:
+                result = await mc.commands.get_msg(timeout=2.0)
+            except Exception:
+                break
+            if result.type in (ET.NO_MORE_MSGS, ET.ERROR):
+                break
+            await asyncio.sleep(0.05)
+    return handler
+
+
 async def start_rx():
     """Subscribe to MeshCore events on all connected interfaces, then drain buffered messages."""
     from meshcore import EventType as ET
@@ -2412,9 +2428,9 @@ async def start_rx():
             mc.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_msg)
             mc.subscribe(EventType.CONTACTS, on_contacts)
             mc.subscribe(EventType.NEW_CONTACT, on_new_contact)
-            mc.subscribe(EventType.MESSAGES_WAITING, lambda e: logger.debug("System: MESSAGES_WAITING received"))
             mc.subscribe(EventType.RX_LOG_DATA, _make_rx_handler(i))
             mc.subscribe(EventType.ACK, _sys.on_ack_event)
+            mc.subscribe(EventType.MESSAGES_WAITING, _make_drain_handler(mc))
             logger.debug(f"System: Subscribed to events on Interface{i}")
             # Refresh contacts so names are populated before handling any messages
             try:
