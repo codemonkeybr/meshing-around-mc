@@ -2412,6 +2412,7 @@ async def start_rx():
             mc.subscribe(EventType.NEW_CONTACT, on_new_contact)
             mc.subscribe(EventType.MESSAGES_WAITING, lambda e: logger.debug("System: MESSAGES_WAITING received"))
             mc.subscribe(EventType.RX_LOG_DATA, _make_rx_handler(i))
+            mc.subscribe(EventType.ACK, _sys.on_ack_event)
             logger.debug(f"System: Subscribed to events on Interface{i}")
             # Refresh contacts so names are populated before handling any messages
             try:

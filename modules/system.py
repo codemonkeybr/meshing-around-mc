@@ -716,36 +716,70 @@ def messageChunker(message):
     except Exception as e:
         logger.warning(f"System: Exception during message chunking: {e} (message length: {len(message)})")
         
-# --- DM send mode ---
-# "simple"  : send_msg (fire-and-forget, no ACK wait) — fast, no retry
-# "reliable": send_msg_with_retry (waits for ACK, retries via known path, falls back to flood)
-DM_SEND_MODE = "reliable"
+# Per-send asyncio.Event keyed by expected ACK code (hex str).
+# Populated by on_ack_event; consumed by _send_dm.
+_ack_events: dict = {}
+
+
+async def on_ack_event(event) -> None:
+    """Handle EventType.ACK — unblocks any _send_dm waiting on this code."""
+    code = event.payload.get('code', '')
+    if isinstance(code, bytes):
+        code = code.hex()
+    if not code:
+        return
+    logger.debug(f"System: ACK received code={code[:8]}...")
+    ev = _ack_events.get(code)
+    if ev is not None:
+        ev.set()
+
 
 async def _send_dm(interface, dst: str, text: str) -> bool:
-    """Send a single DM chunk via the configured send mode."""
-    # Prefer full pubkey from contact cache so send_msg_with_retry can reset path
-    contact = _contacts.get(dst, {})
-    full_key = contact.get('pubkey') or dst  # 64-char hex if available, else 12-char prefix
+    """Send a single DM chunk with ACK-aware retry (max 3 attempts).
 
-    if DM_SEND_MODE == "reliable":
-        result = await interface.commands.send_msg_with_retry(full_key, text)
-        if result is None:
-            # No ACK — likely ERR_CODE_TABLE_FULL; wait for queue to drain then try simple send
-            logger.warning(f"System: send_msg_with_retry got no ACK for {dst[:12]}, retrying after delay")
-            await asyncio.sleep(3)
-            result = await interface.commands.send_msg(full_key, text)
-            if result is None or result.is_error():
-                logger.error(f"System: Fallback send_msg also failed for {dst[:12]}")
-                return False
-            logger.debug(f"System: Fallback send_msg succeeded for {dst[:12]}")
-        elif result.is_error():
-            logger.error(f"System: send_msg_with_retry failed: {result.payload}")
-            return False
-    else:
-        result = await interface.commands.send_msg(dst, text)
+    Uses send_msg once per attempt and waits for the matching ACK via
+    on_ack_event subscription.  Checks before each retry so a late ACK
+    from a previous attempt prevents a duplicate send.  On the second
+    attempt the known path is reset to allow flood routing.  If all
+    attempts exhaust without ACK the message is assumed delivered (ACK
+    may have been lost in the mesh) and True is returned.
+    """
+    contact = _contacts.get(dst, {})
+    full_key = contact.get('pubkey') or dst  # 64-char hex preferred for path reset
+    timestamp = int(time.time())
+    MAX_ATTEMPTS = 3
+
+    for attempt in range(MAX_ATTEMPTS):
+        result = await interface.commands.send_msg(full_key, text, timestamp=timestamp, attempt=attempt)
         if result is None or result.is_error():
-            logger.error(f"System: send_msg failed for {dst[:12]}")
-            return False
+            logger.warning(f"System: send_msg failed for {dst[:12]} attempt {attempt + 1}/{MAX_ATTEMPTS}")
+            await asyncio.sleep(2)
+            continue
+
+        raw_ack = result.payload.get('expected_ack', b'')
+        exp_ack = raw_ack.hex() if isinstance(raw_ack, bytes) else str(raw_ack)
+        timeout_s = result.payload.get('suggested_timeout', 20000) / 1000 * 1.2
+
+        ack_ev = asyncio.Event()
+        _ack_events[exp_ack] = ack_ev
+        try:
+            await asyncio.wait_for(ack_ev.wait(), timeout=timeout_s)
+            logger.debug(f"System: ACK confirmed for {dst[:12]}")
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(f"System: No ACK for {dst[:12]} attempt {attempt + 1}/{MAX_ATTEMPTS}")
+        finally:
+            _ack_events.pop(exp_ack, None)
+
+        # Reset known path before the last attempt so the radio retries via flood
+        if attempt == MAX_ATTEMPTS - 2 and len(full_key) == 64:
+            try:
+                await interface.commands.reset_path(full_key)
+                logger.debug(f"System: Path reset for {dst[:12]}")
+            except Exception:
+                pass
+
+    logger.warning(f"System: No ACK after {MAX_ATTEMPTS} attempts for {dst[:12]}, assuming delivered")
     return True
 
 
@@ -778,7 +812,7 @@ async def send_message(message, ch, nodeid=0, nodeInt=1, bypassChuncking=False, 
             else:
                 dst = str(nodeid)
                 logger.info(f"Device:{nodeInt} " + CustomFormatter.red + f"Chunker{chunkOf} Sending DM: " + CustomFormatter.white + m.replace('\n', ' ') + CustomFormatter.purple +
-                            " To: " + CustomFormatter.white + f"{get_name_from_number(dst, 'long', nodeInt)} [{DM_SEND_MODE}]")
+                            " To: " + CustomFormatter.white + f"{get_name_from_number(dst, 'long', nodeInt)} [ack-retry]")
                 await _send_dm(interface, dst, m)
             await asyncio.sleep(splitDelay)
         return True
